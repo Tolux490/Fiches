@@ -118,7 +118,14 @@
       headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + session.access_token },
       body: JSON.stringify({ system, user })
     });
-    if (!res.ok) throw new Error("gen");
+    if (!res.ok) {
+      let detail = "";
+      try {
+        detail = await res.text();
+      } catch (e) {
+      }
+      throw new Error("HTTP " + res.status + (detail ? ": " + detail.slice(0, 200) : ""));
+    }
     const j = await res.json();
     if (j.error) throw new Error(j.error);
     return j.text || "";
@@ -445,7 +452,7 @@
         setLoading(false);
       }
     }
-    return /* @__PURE__ */ React.createElement("main", { style: s.main }, /* @__PURE__ */ React.createElement("section", { style: s.maker }, /* @__PURE__ */ React.createElement("div", { style: s.eyebrow }, "G\\u00e9n\\u00e9rateur"), /* @__PURE__ */ React.createElement("h1", { style: s.h1 }, "What do you want to say today?"), /* @__PURE__ */ React.createElement("p", { style: s.lede }, "Pick a theme or type your own. Each card gets the article, a pronunciation you can hear, and a real example."), /* @__PURE__ */ React.createElement("div", { style: s.controls }, /* @__PURE__ */ React.createElement("div", { style: s.inputWrap }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("main", { style: s.main }, /* @__PURE__ */ React.createElement("section", { style: s.maker }, /* @__PURE__ */ React.createElement("div", { style: s.eyebrow }, "G\xE9n\xE9rateur"), /* @__PURE__ */ React.createElement("h1", { style: s.h1 }, "What do you want to say today?"), /* @__PURE__ */ React.createElement("p", { style: s.lede }, "Pick a theme or type your own. Each card gets the article, a pronunciation you can hear, and a real example."), /* @__PURE__ */ React.createElement("div", { style: s.controls }, /* @__PURE__ */ React.createElement("div", { style: s.inputWrap }, /* @__PURE__ */ React.createElement(
       "input",
       {
         className: "inp",
@@ -467,9 +474,16 @@
   }
   function genError(e) {
     const m = String(e && e.message || e);
-    if (m === "auth") return "Session expired \u2014 sign in again.";
-    if (m === "gen") return "The AI function isn't reachable. Check the generate function is deployed and ANTHROPIC_API_KEY is set.";
-    return "Couldn't generate just now. Try again.";
+    console.error("[Fiches] generation error:", e);
+    if (m === "config") return "Supabase didn't initialise \u2014 check your URL/key and that the CDN isn't blocked.";
+    if (m === "auth") return "Session expired \u2014 sign out and sign in again.";
+    if (/Failed to fetch|NetworkError|load failed/i.test(m))
+      return "Couldn't reach the AI function. It's probably not deployed yet (must be named 'generate'), or CORS is blocking it.";
+    if (/ANTHROPIC_API_KEY/i.test(m)) return "The function is up, but ANTHROPIC_API_KEY isn't set as a secret.";
+    if (/HTTP 401|unauthorized/i.test(m)) return "The function rejected the request (401). Re-deploy it with: functions deploy generate --no-verify-jwt";
+    if (/HTTP 404/i.test(m)) return "Function not found (404). It must be named exactly 'generate'.";
+    if (m === "parse") return "The AI replied, but not in the expected format. Try again.";
+    return "Generation failed \u2014 " + m;
   }
   function FullCard({ card, status, onStudy, onEdit, onDelete }) {
     const s = styles;
@@ -710,7 +724,7 @@ button:focus-visible { outline: 2px solid ${T.bleu}; outline-offset: 2px; }
     else if (++n > 150) {
       clearInterval(iv);
       var r = document.getElementById('root');
-      if (r) r.innerHTML = '<div style="font-family:system-ui;max-width:520px;margin:60px auto;padding:0 22px;color:#232B3A;line-height:1.6"><h2>Could not load React</h2><p>The React library was blocked or failed to load from the CDN. If you use an ad/script blocker, allow <b>cdnjs.cloudflare.com</b> and <b>jsdelivr.net</b>, then refresh.</p></div>';
+      if (r) r.innerHTML = '<div style="font-family:system-ui;max-width:520px;margin:60px auto;padding:0 22px;color:#232B3A;line-height:1.6"><h2>Could not load React</h2><p>The React library was blocked or failed to load. If you use an ad/script blocker, allow <b>cdnjs.cloudflare.com</b> and <b>jsdelivr.net</b>, then refresh.</p></div>';
     }
   }, 50);
 })();
