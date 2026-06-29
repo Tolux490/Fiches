@@ -10,766 +10,673 @@
   html, body, #root { height: 100%; margin: 0; }
   body { background: #F3EFE6; }
 </style>
-<!-- React + Babel + Supabase from CDN (loaded by the visitor's browser) -->
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone@7.24.0/babel.min.js"></script>
+<!-- React + Supabase from CDN. JSX is pre-compiled (no Babel). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="root"></div>
 
-<script type="text/babel" data-presets="react">
-const { useState, useEffect, useRef } = React;
-
-/* ============================================================
-   1) CONFIG — paste your two Supabase values here
-   ============================================================ */
-const SUPABASE_URL = "https://ppeacmblweydrvokvbeb.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_tKdo6hYOMBvN21RjhGVDWg_0u4RJauZ";
-/* ============================================================ */
-
-const CONFIGURED = !SUPABASE_URL.includes("YOUR-PROJECT") && !SUPABASE_ANON_KEY.includes("YOUR-ANON");
-
-// 1. Check if window.supabase actually loaded before trying to use it
-const supabaseExists = typeof window !== "undefined" && window.supabase;
-const sb = (CONFIGURED && supabaseExists) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
-const GEN_URL = SUPABASE_URL + "/functions/v1/generate";
-
-// 2. If it's missing, let the user know instead of crashing completely
-if (!supabaseExists) {
-  console.error("Supabase script was blocked or failed to load. Check your adblocker!");
-}
-
-// ---------- theme ----------
-const T = { paper:"#F3EFE6", paper2:"#FBF9F4", ink:"#232B3A", inkSoft:"#5A6172", line:"#E3DDCF",
-  bleu:"#2E5AAC", bleuDark:"#234A91", ochre:"#C08A2E", vert:"#5E7F3E", vertDark:"#4E6B33", brick:"#AE4A3C" };
-const TOPICS = ["Salutations","Au caf\u00e9","Voyage","Les nombres","Verbes du quotidien","La famille","Faire les courses","Le temps"];
-const LANGS = { en:"English", pl:"Polski" };
-const LANG_FULL = { en:"English", pl:"Polish" };
-const BATCH_TOP = 30, TOP_TARGET = 1000;
-
-const uid = () => Math.random().toString(36).slice(2,10);
-const slug = (s) => (s||"fiches").toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"");
-const keyOf = (fr) => String(fr||"").trim().toLowerCase();
-const escHtml = (s) => String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-
-// ---------- icons (inline SVG) ----------
-const PATHS = {
-  sparkles:'<path d="M12 3l1.6 4.8L18 9.4l-4.4 1.6L12 16l-1.6-5L6 9.4l4.4-1.6L12 3z"/><path d="M19 14l.7 2.1L22 17l-2.3.9L19 20l-.7-2.1L16 17l2.3-.9L19 14z"/>',
-  plus:'<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
-  x:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
-  check:'<polyline points="20 6 9 17 4 12"/>',
-  chevL:'<polyline points="15 18 9 12 15 6"/>',
-  chevR:'<polyline points="9 18 15 12 9 6"/>',
-  download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
-  trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
-  pencil:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>',
-  shuffle:'<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/>',
-  volume:'<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/>',
-  loader:'<line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.9" y1="4.9" x2="7.8" y2="7.8"/><line x1="16.2" y1="16.2" x2="19.1" y2="19.1"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.9" y1="19.1" x2="7.8" y2="16.2"/><line x1="16.2" y1="7.8" x2="19.1" y2="4.9"/>',
-  logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
-  cap:'<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5"/>',
-  list:'<line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4l2-2.5V14H4"/>',
-  rotate:'<polyline points="1 4 1 10 7 10"/><path d="M3.5 15a9 9 0 1 0 2-9.5L1 10"/>',
-  info:'<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
-  user:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
-  mail:'<path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><polyline points="22 6 12 13 2 6"/>',
-  cloud:'<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
-};
-
-  // ... rest of your existing App code stays exactly the same
-  
-function Icon({ n, s=16, cls }) {
-  return <svg className={cls} width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}
-    dangerouslySetInnerHTML={{ __html: PATHS[n] || "" }} />;
-}
-const Spin = ({ s=16 }) => <span className="spin" style={{ display:"inline-flex" }}><Icon n="loader" s={s} /></span>;
-
-// ---------- Google Translate ----------
-const G = { tl:"pl" };
-function openTranslate(text) {
-  if (!text) return;
-  const url = "https://translate.google.com/?sl=fr&tl=" + (G.tl||"en") + "&text=" + encodeURIComponent(text) + "&op=translate";
-  try { window.open(url, "_blank", "noopener,noreferrer"); } catch (e) { try { location.href = url; } catch (_) {} }
-}
-
-// ---------- AI generation (via edge function) ----------
-async function callGen(system, user) {
-  if (!sb) throw new Error("config");
-  const { data:{ session } } = await sb.auth.getSession();
-  if (!session) throw new Error("auth");
-  const res = await fetch(GEN_URL, {
-    method:"POST",
-    headers:{ "Content-Type":"application/json", apikey:SUPABASE_ANON_KEY, Authorization:"Bearer " + session.access_token },
-    body: JSON.stringify({ system, user }),
-  });
-  if (!res.ok) throw new Error("gen");
-  const j = await res.json();
-  if (j.error) throw new Error(j.error);
-  return j.text || "";
-}
-function parseCards(text) {
-  let clean = (text||"").replace(/```json|```/g,"").trim();
-  const a = clean.indexOf("["), b = clean.lastIndexOf("]");
-  if (a!==-1 && b!==-1) clean = clean.slice(a,b+1);
-  const arr = JSON.parse(clean);
-  if (!Array.isArray(arr)) throw new Error("parse");
-  return arr;
-}
-async function genSituational({ topic, transLang, level, existing }) {
-  const lang = LANG_FULL[transLang];
-  const system =
-    "You are a French " + level + " flashcard generator. Output ONLY a JSON array. No prose, markdown, or code fences. " +
-    "Each object: \"fr\" (French word/short phrase, lowercase unless proper noun), \"article\" (le/la/l'/les/un/une/\u2014; \u2014 if not a noun), " +
-    "\"pron\" (short phonetic hint a Polish/English speaker can read), \"translation\" (meaning in " + lang + "), " +
-    "\"example_fr\" (one short natural " + level + " French sentence), \"example_tr\" (that sentence in " + lang + "). " +
-    "Return exactly 8 distinct beginner-useful items. Avoid these French words: " + (existing.slice(0,50).join(", ")||"(none)") + ".";
-  const user = "Topic: " + (topic||"everyday essentials") + ". Level " + level + ". Translations in " + lang + ". 8 cards as JSON array.";
-  const arr = parseCards(await callGen(system, user));
-  return arr.filter(x=>x&&x.fr&&x.translation).map(x=>({ id:uid(), fr:String(x.fr).trim(), article:String(x.article||"\u2014").trim(),
-    pron:String(x.pron||"").trim(), translation:String(x.translation).trim(), example_fr:String(x.example_fr||"").trim(),
-    example_tr:String(x.example_tr||"").trim(), tags:slug(topic) }));
-}
-async function genTop({ transLang, start, recent }) {
-  const lang = LANG_FULL[transLang];
-  const system =
-    "You generate ranked common French vocabulary for everyday use. Output ONLY a JSON array, no prose/markdown/fences. " +
-    "Each object: \"fr\" (lowercase unless proper noun), \"article\" (le/la/l'/les/un/une/\u2014), " +
-    "\"pron\" (short phonetic hint for a Polish/English speaker), \"translation\" (in " + lang + "). " +
-    "Return exactly " + BATCH_TOP + " of the most frequent everyday French words, continuing AFTER rank " + start + ". " +
-    "Order by descending frequency. Do NOT include: " + (recent.slice(-120).join(", ")||"(none)") + ".";
-  const user = "Give " + BATCH_TOP + " common French words starting around rank " + (start+1) + ". Translations in " + lang + ". JSON array.";
-  const arr = parseCards(await callGen(system, user));
-  return arr.filter(x=>x&&x.fr&&x.translation).map((x,i)=>({ id:uid(), fr:String(x.fr).trim(), article:String(x.article||"\u2014").trim(),
-    pron:String(x.pron||"").trim(), translation:String(x.translation).trim(), rank:start+i+1, tags:"top1000" }));
-}
-
-// ---------- Anki export ----------
-function buildAnkiFile(deck) {
-  const esc = (s) => '"' + String(s??"").replace(/"/g,'""') + '"';
-  const lines = ["#separator:Comma","#html:true","#notetype:Basic","#deck:French::Fiches","#tags column:3"];
-  for (const c of deck) {
-    const front = c.article && c.article!=="\u2014" ? (c.article+" "+escHtml(c.fr)) : escHtml(c.fr);
-    const parts = ["<b>"+escHtml(c.translation)+"</b>"];
-    if (c.pron) parts.push('<span style="color:#9a8f78">['+escHtml(c.pron)+']</span>');
-    if (c.example_fr) { parts.push("<hr>","<i>"+escHtml(c.example_fr)+"</i>"); if (c.example_tr) parts.push('<span style="color:#777">'+escHtml(c.example_tr)+'</span>'); }
-    const tags = (c.tags||"fiches").replace(/\s+/g,"_") + " fiches";
-    lines.push([esc(front), esc(parts.join("<br>")), esc(tags)].join(","));
+<script>
+(function () {
+  function ready() { return window.React && window.ReactDOM && document.getElementById('root'); }
+  function go() {
+(() => {
+  const { useState, useEffect, useRef } = React;
+  const SUPABASE_URL = "https://ppeacmblweydrvokvbeb.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_tKdo6hYOMBvN21RjhGVDWg_0u4RJauZ";
+  const CONFIGURED = !SUPABASE_URL.includes("YOUR-PROJECT") && !SUPABASE_ANON_KEY.includes("YOUR-ANON");
+  const supabaseExists = typeof window !== "undefined" && window.supabase;
+  const sb = CONFIGURED && supabaseExists ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+  const GEN_URL = SUPABASE_URL + "/functions/v1/generate";
+  if (!supabaseExists) {
+    console.error("Supabase script was blocked or failed to load. Check your adblocker!");
   }
-  return lines.join("\n");
-}
-function downloadFile(content, name) {
-  const blob = new Blob([content], { type:"text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a"); a.href=url; a.download=name;
-  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-}
-
-// ---------- Supabase state ----------
-const DEFAULT_STATE = { deck:[], progress:{}, top:[], transLang:"pl", level:"A1" };
-async function loadState(userId) {
-  try {
-    const { data, error } = await sb.from("fiches_state").select("state").eq("user_id", userId).maybeSingle();
-    if (error) { console.error(error); return null; }
-    return data ? data.state : null;
-  } catch (e) { console.error(e); return null; }
-}
-function saveState(userId, state) {
-  return sb.from("fiches_state").upsert({ user_id:userId, state, updated_at:new Date().toISOString() });
-}
-
-// ================= App =================
-// ================= App =================
-function App() {
-  // Pinned right at the top of the App function:
-  if (typeof window === "undefined" || !window.supabase) {
-    return (
-      <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif", color: "#232B3A", minHeight: "100%", background: "#F3EFE6" }}>
-        <h2 style={{ fontFamily: "Georgia, serif", fontSize: 28 }}>⚠️ Connection Blocked</h2>
-        <p style={{ color: "#5A6172", maxWidth: 450, margin: "10px auto", lineHeight: 1.5 }}>
-          It looks like an adblocker or strict privacy shield is blocking the Supabase database scripts from loading.
-        </p>
-        <p style={{ fontWeight: "bold", marginTop: 15 }}>Please disable your adblocker for this site and refresh!</p>
-      </div>
+  const T = {
+    paper: "#F3EFE6",
+    paper2: "#FBF9F4",
+    ink: "#232B3A",
+    inkSoft: "#5A6172",
+    line: "#E3DDCF",
+    bleu: "#2E5AAC",
+    bleuDark: "#234A91",
+    ochre: "#C08A2E",
+    vert: "#5E7F3E",
+    vertDark: "#4E6B33",
+    brick: "#AE4A3C"
+  };
+  const TOPICS = ["Salutations", "Au caf\xE9", "Voyage", "Les nombres", "Verbes du quotidien", "La famille", "Faire les courses", "Le temps"];
+  const LANGS = { en: "English", pl: "Polski" };
+  const LANG_FULL = { en: "English", pl: "Polish" };
+  const BATCH_TOP = 30;
+  const TOP_TARGET = 1e3;
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const slug = (s) => (s || "fiches").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  const keyOf = (fr) => String(fr || "").trim().toLowerCase();
+  const escHtml = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const PATHS = {
+    sparkles: '<path d="M12 3l1.6 4.8L18 9.4l-4.4 1.6L12 16l-1.6-5L6 9.4l4.4-1.6L12 3z"/><path d="M19 14l.7 2.1L22 17l-2.3.9L19 20l-.7-2.1L16 17l2.3-.9L19 14z"/>',
+    plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    check: '<polyline points="20 6 9 17 4 12"/>',
+    chevL: '<polyline points="15 18 9 12 15 6"/>',
+    chevR: '<polyline points="9 18 15 12 9 6"/>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+    trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
+    pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>',
+    shuffle: '<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/>',
+    volume: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/>',
+    loader: '<line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.9" y1="4.9" x2="7.8" y2="7.8"/><line x1="16.2" y1="16.2" x2="19.1" y2="19.1"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.9" y1="19.1" x2="7.8" y2="16.2"/><line x1="16.2" y1="7.8" x2="19.1" y2="4.9"/>',
+    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+    cap: '<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5"/>',
+    list: '<line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4l2-2.5V14H4"/>',
+    rotate: '<polyline points="1 4 1 10 7 10"/><path d="M3.5 15a9 9 0 1 0 2-9.5L1 10"/>',
+    info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
+    user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    mail: '<path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><polyline points="22 6 12 13 2 6"/>',
+    cloud: '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>'
+  };
+  function Icon({ n, s = 16, cls }) {
+    return /* @__PURE__ */ React.createElement(
+      "svg",
+      {
+        className: cls,
+        width: s,
+        height: s,
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: "2",
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+        style: { flexShrink: 0 },
+        dangerouslySetInnerHTML: { __html: PATHS[n] || "" }
+      }
     );
   }
-
-  // Your original state hooks continue exactly like normal right here:
-  const [session, setSession] = useState(null);
-  const [data, setData] = useState(null);
-  const [booting, setBooting] = useState(true);
-  const [saveStatus, setSaveStatus] = useState("saved");
-  const saveTimer = useRef(null);
-
-  useEffect(() => {
-    if (!CONFIGURED) { setBooting(false); return; }
-    sb.auth.getSession().then(({ data:{ session } }) => { setSession(session); if (!session) setBooting(false); });
-    const { data:sub } = sb.auth.onAuthStateChange((_e, sess) => { setSession(sess); if (!sess) { setData(null); setBooting(false); } });
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!session) return;
-    (async () => {
-      setBooting(true);
-      let st = await loadState(session.user.id);
-      if (!st) { st = { ...DEFAULT_STATE }; await saveState(session.user.id, st); }
-      setData({ ...DEFAULT_STATE, ...st });
-      setBooting(false);
-    })();
-  }, [session && session.user.id]);
-
-  useEffect(() => { G.tl = data?.transLang || "pl"; }, [data && data.transLang]);
-
-  function commit(next) {
-    setData(next); setSaveStatus("saving");
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    const id = session.user.id;
-    saveTimer.current = setTimeout(async () => {
-      const { error } = await saveState(id, next);
-      setSaveStatus(error ? "error" : "saved");
-    }, 500);
-  }
-
-  if (!CONFIGURED) return <SetupNotice />;
-  if (booting) return <div style={styles.boot}><Spin s={24} /></div>;
-  if (!session) return <Auth />;
-  if (!data) return <div style={styles.boot}><Spin s={24} /></div>;
-  return <Workspace session={session} data={data} commit={commit} saveStatus={saveStatus} onLogout={() => sb.auth.signOut()} />;
-}
-
-function SetupNotice() {
-  const s = styles;
-  return (
-    <div style={s.root}><div style={s.authWrap}>
-      <div style={s.logoBig}>F</div>
-      <h1 style={{ ...s.h1, fontSize:30 }}>One step left</h1>
-      <p style={{ ...s.lede, textAlign:"center" }}>Open <b>index.html</b> and paste your Supabase <b>Project URL</b> and <b>anon key</b> into the CONFIG block near the top, then reload. The DEPLOY guide walks you through it.</p>
-    </div></div>
-  );
-}
-
-// ================= Auth =================
-function Auth() {
-  const s = styles;
-  const [mode, setMode] = useState("signin");
-  const [email, setEmail] = useState("");
-  const [pw, setPw] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState(null);
-  const [err, setErr] = useState(null);
-
-  async function submit() {
-    if (!email.trim() || pw.length < 6) { setErr("Enter an email and a password of at least 6 characters."); return; }
-    setBusy(true); setErr(null); setMsg(null);
+  const Spin = ({ s = 16 }) => /* @__PURE__ */ React.createElement("span", { className: "spin", style: { display: "inline-flex" } }, /* @__PURE__ */ React.createElement(Icon, { n: "loader", s }));
+  const G = { tl: "pl" };
+  function openTranslate(text) {
+    if (!text) return;
+    const url = "https://translate.google.com/?sl=fr&tl=" + (G.tl || "en") + "&text=" + encodeURIComponent(text) + "&op=translate";
     try {
-      if (mode === "signin") {
-        const { error } = await sb.auth.signInWithPassword({ email:email.trim(), password:pw });
-        if (error) throw error;
-      } else {
-        const { data, error } = await sb.auth.signUp({ email:email.trim(), password:pw });
-        if (error) throw error;
-        if (!data.session) setMsg("Account created. If email confirmation is on, check your inbox, then sign in.");
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      try {
+        location.href = url;
+      } catch (_) {
       }
-    } catch (e) { setErr(e.message || "Something went wrong."); }
-    finally { setBusy(false); }
+    }
   }
-
-  return (
-    <div style={s.root}>
-      <div style={s.authWrap}>
-        <div style={s.logoBig}>F</div>
-        <div style={s.eyebrow}>Bienvenue</div>
-        <h1 style={{ ...s.h1, fontSize:32, marginTop:2 }}>{mode==="signin" ? "Welcome back" : "Create your account"}</h1>
-        <p style={{ ...s.lede, textAlign:"center", margin:"0 auto 20px" }}>One login, same flashcards on every device.</p>
-
-        <div style={s.authCard}>
-          <label style={s.fieldLabel}>Email</label>
-          <div style={s.inputIcon}><Icon n="mail" s={15} cls="muted" />
-            <input className="inp" style={s.inputBare} type="email" placeholder="you@email.com" value={email}
-              onChange={e=>setEmail(e.target.value)} onKeyDown={e=>{ if(e.key==="Enter") submit(); }} />
-          </div>
-          <label style={s.fieldLabel}>Password</label>
-          <input className="inp" style={s.input} type="password" placeholder="at least 6 characters" value={pw}
-            onChange={e=>setPw(e.target.value)} onKeyDown={e=>{ if(e.key==="Enter") submit(); }} />
-          {err && <div style={s.error}>{err}</div>}
-          {msg && <div style={s.okmsg}>{msg}</div>}
-          <button className="gen" style={{ ...s.genBtn, width:"100%", justifyContent:"center", marginTop:14 }} onClick={submit} disabled={busy}>
-            {busy ? <Spin /> : <Icon n="user" s={16} />}{mode==="signin" ? "Sign in" : "Create account"}
-          </button>
-          <div style={s.switchRow}>
-            {mode==="signin" ? "New here?" : "Already have an account?"}
-            <button style={s.linkBtn} onClick={()=>{ setMode(mode==="signin"?"signup":"signin"); setErr(null); setMsg(null); }}>
-              {mode==="signin" ? "Create one" : "Sign in"}
-            </button>
-          </div>
-        </div>
-        <p style={s.authNote}>Your account and cards live in your own Supabase project. Sign in with the same email on your phone and PC to share one deck.</p>
-      </div>
-    </div>
-  );
-}
-
-// ================= Workspace =================
-function Workspace({ session, data, commit, saveStatus, onLogout }) {
-  const s = styles;
-  const [view, setView] = useState("generate");
-  const [showImport, setShowImport] = useState(false);
-  const email = session.user.email || "you";
-
-  const setProgress = (fr, status) => {
-    const k = keyOf(fr); const prog = { ...(data.progress||{}) };
-    const cur = prog[k] || { status:"new", seen:0 };
-    prog[k] = { status, seen:(cur.seen||0) + (status==="new"?0:1) };
-    commit({ ...data, progress:prog });
-  };
-  const statusOf = (fr) => (data.progress?.[keyOf(fr)]?.status) || "new";
-  const stats = (() => { let known=0, learning=0; for (const v of Object.values(data.progress||{})) { if (v.status==="known") known++; else if (v.status==="learning") learning++; } return { known, learning }; })();
-
-  function addToDeck(cards) {
-    const seen = new Set(data.deck.map(c=>keyOf(c.fr))); const merged = [...data.deck];
-    for (const c of cards) if (!seen.has(keyOf(c.fr))) { merged.push(c); seen.add(keyOf(c.fr)); }
-    commit({ ...data, deck:merged });
+  async function callGen(system, user) {
+    if (!sb) throw new Error("config");
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new Error("auth");
+    const res = await fetch(GEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({ system, user })
+    });
+    if (!res.ok) throw new Error("gen");
+    const j = await res.json();
+    if (j.error) throw new Error(j.error);
+    return j.text || "";
   }
-  const removeCard = (id) => commit({ ...data, deck:data.deck.filter(c=>c.id!==id) });
-  const editCard = (card) => commit({ ...data, deck:data.deck.map(c=>c.id===card.id?card:c) });
-  const clearDeck = () => commit({ ...data, deck:[] });
-  const setTop = (top) => commit({ ...data, top });
-  const setPref = (p) => commit({ ...data, ...p });
-  function exportAnki() { if (!data.deck.length) return; downloadFile(buildAnkiFile(data.deck), "fiches_french.txt"); setShowImport(true); }
-
-  return (
-    <div style={s.root}>
-      <header style={s.header}>
-        <div style={s.brandRow}>
-          <div style={s.logo}>F</div>
-          <div><div style={s.brand}>Fiches</div><div style={s.tagline}>French flashcards · synced everywhere · free Anki export</div></div>
-        </div>
-        <div style={s.headRight}>
-          <span style={s.syncChip}><Icon n="cloud" s={13} />{saveStatus==="saving"?"saving…":saveStatus==="error"?"sync error":"synced"}</span>
-          <div style={s.statPills}>
-            <span style={{ ...s.pill, ...s.pillKnown }}>{stats.known} known</span>
-            <span style={{ ...s.pill, ...s.pillLearn }}>{stats.learning} learning</span>
-          </div>
-          <button className="ghost" style={s.userChip} onClick={onLogout} title={email}>
-            <span style={s.avatarSm}>{email[0]?.toUpperCase()}</span><Icon n="logout" s={13} />
-          </button>
-        </div>
-      </header>
-
-      <nav style={s.tabsRow}>
-        <div style={s.tabs}>
-          <Tab on={view==="generate"} onClick={()=>setView("generate")} icon="sparkles" label="Generate" />
-          <Tab on={view==="top"} onClick={()=>setView("top")} icon="list" label="Top 1000" />
-          <Tab on={view==="practice"} onClick={()=>setView("practice")} icon="cap" label="Practice" badge={data.deck.length} />
-        </div>
-        <button className="export" style={{ ...s.exportBtn, ...(data.deck.length?{}:s.exportOff) }} onClick={exportAnki} disabled={!data.deck.length}>
-          <Icon n="download" s={15} /> Export to Anki
-        </button>
-      </nav>
-
-      {view==="generate" && <GenerateTab data={data} setPref={setPref} addToDeck={addToDeck} deck={data.deck}
-        removeCard={removeCard} editCard={editCard} clearDeck={clearDeck} statusOf={statusOf} setProgress={setProgress} />}
-      {view==="top" && <TopTab data={data} setTop={setTop} setPref={setPref} addToDeck={addToDeck} deck={data.deck} statusOf={statusOf} setProgress={setProgress} />}
-      {view==="practice" && <PracticeTab deck={data.deck} statusOf={statusOf} setProgress={setProgress} goBuild={()=>setView("generate")} />}
-
-      {showImport && <ImportModal onClose={()=>setShowImport(false)} />}
-      <footer style={s.footer}>Import into free Anki: <b>AnkiDroid</b> (Android) · <b>ankiweb.net</b> (any browser) · <b>desktop Anki</b>.</footer>
-    </div>
-  );
-}
-
-function Tab({ on, onClick, icon, label, badge }) {
-  const s = styles;
-  return <button className="tab" style={{ ...s.tab, ...(on?s.tabOn:{}) }} onClick={onClick}>
-    <Icon n={icon} s={15} /> {label}{badge!=null && badge>0 && <span style={s.count}>{badge}</span>}
-  </button>;
-}
-function SpeakBtn({ text, size=28 }) {
-  const s = styles;
-  return <button className="iconb spk" style={{ ...s.iconBtn, width:size, height:size }} title="Open in Google Translate"
-    aria-label={"Hear " + text + " in Google Translate"} onClick={e=>{ e.stopPropagation(); openTranslate(text); }}><Icon n="volume" s={15} /></button>;
-}
-function StudiedDot({ status, onClick }) {
-  const s = styles;
-  const map = { new:{ bg:"#fff", bd:T.line, c:T.inkSoft }, learning:{ bg:"#FBF1DF", bd:T.ochre, c:T.ochre }, known:{ bg:"#EAF1E2", bd:T.vert, c:T.vert } };
-  const m = map[status] || map.new;
-  return <button className="iconb" style={{ ...s.iconBtn, background:m.bg, borderColor:m.bd, color:m.c }} aria-label="Mark studied"
-    onClick={e=>{ e.stopPropagation(); onClick(); }}><Icon n="check" s={14} /></button>;
-}
-
-// ---------- Generate ----------
-function GenerateTab({ data, setPref, addToDeck, deck, removeCard, editCard, clearDeck, statusOf, setProgress }) {
-  const s = styles;
-  const [topic, setTopic] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [editing, setEditing] = useState(null);
-  const nextStatus = (st) => st==="known"?"new":st==="learning"?"known":"learning";
-
-  async function run(forced) {
-    const t = (forced ?? topic).trim();
-    setLoading(true); setError(null);
-    try { addToDeck(await genSituational({ topic:t, transLang:data.transLang, level:data.level, existing:deck.map(c=>c.fr) })); }
-    catch (e) { setError(genError(e)); } finally { setLoading(false); }
+  function parseCards(text) {
+    let clean = (text || "").replace(/```json|```/g, "").trim();
+    const a = clean.indexOf("["), b = clean.lastIndexOf("]");
+    if (a !== -1 && b !== -1) clean = clean.slice(a, b + 1);
+    const arr = JSON.parse(clean);
+    if (!Array.isArray(arr)) throw new Error("parse");
+    return arr;
   }
-
-  return (
-    <main style={s.main}>
-      <section style={s.maker}>
-        <div style={s.eyebrow}>G\u00e9n\u00e9rateur</div>
-        <h1 style={s.h1}>What do you want to say today?</h1>
-        <p style={s.lede}>Pick a theme or type your own. Each card gets the article, a pronunciation you can hear, and a real example.</p>
-        <div style={s.controls}>
-          <div style={s.inputWrap}>
-            <input className="inp" style={s.input} placeholder="e.g. ordering at a restaurant, the airport, small talk…"
-              value={topic} onChange={e=>setTopic(e.target.value)} onKeyDown={e=>{ if(e.key==="Enter"&&!loading) run(); }} />
-            <button className="gen" style={{ ...s.genBtn, ...(loading?s.genBtnOff:{}) }} onClick={()=>run()} disabled={loading}>
-              {loading ? <Spin /> : <Icon n="sparkles" s={16} />}{loading ? "Generating…" : "Generate 8 cards"}
-            </button>
-          </div>
-          <div style={s.optRow}>
-            <div style={s.seg}>{Object.keys(LANGS).map(k=><button key={k} className="segb" style={{ ...s.segBtn, ...(data.transLang===k?s.segOn:{}) }} onClick={()=>setPref({ transLang:k })}>{LANGS[k]}</button>)}</div>
-            <div style={s.seg}>{["A1","A2"].map(k=><button key={k} className="segb" style={{ ...s.segBtn, ...(data.level===k?s.segOn:{}) }} onClick={()=>setPref({ level:k })}>{k}</button>)}</div>
-          </div>
-          <div style={s.chips}>{TOPICS.map(t=><button key={t} className="chip" style={s.chip} disabled={loading} onClick={()=>{ setTopic(t); run(t); }}>{t}</button>)}</div>
-          {error && <div style={s.error}>{error}</div>}
-        </div>
-      </section>
-      <section style={s.deckSec}>
-        <div style={s.deckHead}>
-          <h2 style={s.h2}>Your deck <span style={s.deckCount}>{deck.length}</span></h2>
-          {deck.length>0 && <button className="ghost" style={s.ghostBtn} onClick={clearDeck}><Icon n="trash" s={14} /> Clear</button>}
-        </div>
-        {deck.length===0 ? (
-          <div style={s.empty}><div style={s.emptyMark}>fiche</div><p style={s.emptyText}>No cards yet. Generate a batch and they'll stack up here.</p></div>
-        ) : (
-          <div style={s.cardGrid}>{deck.map(c => editing===c.id
-            ? <EditCard key={c.id} card={c} onSave={d=>{ editCard(d); setEditing(null); }} onCancel={()=>setEditing(null)} />
-            : <FullCard key={c.id} card={c} status={statusOf(c.fr)} onStudy={()=>setProgress(c.fr,nextStatus(statusOf(c.fr)))} onEdit={()=>setEditing(c.id)} onDelete={()=>removeCard(c.id)} />)}
-          </div>
-        )}
-      </section>
-    </main>
-  );
-}
-function genError(e) {
-  const m = String(e && e.message || e);
-  if (m==="auth") return "Session expired — sign in again.";
-  if (m==="gen") return "The AI function isn't reachable. Check the generate function is deployed and ANTHROPIC_API_KEY is set.";
-  return "Couldn't generate just now. Try again.";
-}
-
-function FullCard({ card, status, onStudy, onEdit, onDelete }) {
-  const s = styles;
-  const head = card.article && card.article!=="\u2014" ? (card.article+" "+card.fr) : card.fr;
-  return (
-    <div className="card" style={{ ...s.card, ...(status==="known"?s.cardKnown:{}) }}>
-      <div style={s.cardTop}>
-        <div style={s.headRowFr}><div style={s.headword}>{head}</div><SpeakBtn text={head} /></div>
-        <div className="cardTools" style={s.cardTools}>
-          <StudiedDot status={status} onClick={onStudy} />
-          <button className="iconb" style={s.iconBtn} onClick={onEdit} aria-label="Edit"><Icon n="pencil" s={14} /></button>
-          <button className="iconb del" style={s.iconBtn} onClick={onDelete} aria-label="Delete"><Icon n="trash" s={14} /></button>
-        </div>
-      </div>
-      {card.pron && <div style={s.pron}>[{card.pron}]</div>}
-      <div style={s.trans}>{card.translation}</div>
-      {card.example_fr && <div style={s.example}>
-        <div style={s.exRow}><div style={s.exFr}>{card.example_fr}</div><SpeakBtn text={card.example_fr} size={24} /></div>
-        {card.example_tr && <div style={s.exTr}>{card.example_tr}</div>}
-      </div>}
-      {card.tags && <div style={s.tag}>#{card.tags}</div>}
-    </div>
-  );
-}
-function EditCard({ card, onSave, onCancel }) {
-  const s = styles; const [d,setD] = useState({ ...card });
-  const set = (k) => (e) => setD({ ...d, [k]:e.target.value });
-  return (
-    <div style={{ ...s.card, ...s.cardEdit }}>
-      <div style={s.editRow}><input style={{ ...s.editInp, width:64 }} value={d.article} onChange={set("article")} placeholder="le" /><input style={{ ...s.editInp, flex:1 }} value={d.fr} onChange={set("fr")} placeholder="French" /></div>
-      <input style={s.editInp} value={d.pron} onChange={set("pron")} placeholder="pronunciation" />
-      <input style={s.editInp} value={d.translation} onChange={set("translation")} placeholder="meaning" />
-      <input style={s.editInp} value={d.example_fr||""} onChange={set("example_fr")} placeholder="example (FR)" />
-      <input style={s.editInp} value={d.example_tr||""} onChange={set("example_tr")} placeholder="example (translation)" />
-      <div style={s.editActions}><button className="ghost" style={s.ghostBtn} onClick={onCancel}><Icon n="x" s={14} /> Cancel</button><button className="export" style={s.exportBtn} onClick={()=>onSave(d)}><Icon n="check" s={14} /> Save</button></div>
-    </div>
-  );
-}
-
-// ---------- Top 1000 ----------
-function TopTab({ data, setTop, setPref, addToDeck, deck, statusOf, setProgress }) {
-  const s = styles;
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const top = data.top || [];
-  const inDeck = new Set(deck.map(c=>keyOf(c.fr)));
-  const nextStatus = (st) => st==="known"?"new":st==="learning"?"known":"learning";
-
-  async function loadMore() {
-    setLoading(true); setError(null);
+  async function genSituational({ topic, transLang, level, existing }) {
+    const lang = LANG_FULL[transLang];
+    const system = "You are a French " + level + ` flashcard generator. Output ONLY a JSON array. No prose, markdown, or code fences. Each object: "fr" (French word/short phrase, lowercase unless proper noun), "article" (le/la/l'/les/un/une/\u2014; \u2014 if not a noun), "pron" (short phonetic hint a Polish/English speaker can read), "translation" (meaning in ` + lang + '), "example_fr" (one short natural ' + level + ' French sentence), "example_tr" (that sentence in ' + lang + "). Return exactly 8 distinct beginner-useful items. Avoid these French words: " + (existing.slice(0, 50).join(", ") || "(none)") + ".";
+    const user = "Topic: " + (topic || "everyday essentials") + ". Level " + level + ". Translations in " + lang + ". 8 cards as JSON array.";
+    const arr = parseCards(await callGen(system, user));
+    return arr.filter((x) => x && x.fr && x.translation).map((x) => ({
+      id: uid(),
+      fr: String(x.fr).trim(),
+      article: String(x.article || "\u2014").trim(),
+      pron: String(x.pron || "").trim(),
+      translation: String(x.translation).trim(),
+      example_fr: String(x.example_fr || "").trim(),
+      example_tr: String(x.example_tr || "").trim(),
+      tags: slug(topic)
+    }));
+  }
+  async function genTop({ transLang, start, recent }) {
+    const lang = LANG_FULL[transLang];
+    const system = `You generate ranked common French vocabulary for everyday use. Output ONLY a JSON array, no prose/markdown/fences. Each object: "fr" (lowercase unless proper noun), "article" (le/la/l'/les/un/une/\u2014), "pron" (short phonetic hint for a Polish/English speaker), "translation" (in ` + lang + "). Return exactly " + BATCH_TOP + " of the most frequent everyday French words, continuing AFTER rank " + start + ". Order by descending frequency. Do NOT include: " + (recent.slice(-120).join(", ") || "(none)") + ".";
+    const user = "Give " + BATCH_TOP + " common French words starting around rank " + (start + 1) + ". Translations in " + lang + ". JSON array.";
+    const arr = parseCards(await callGen(system, user));
+    return arr.filter((x) => x && x.fr && x.translation).map((x, i) => ({
+      id: uid(),
+      fr: String(x.fr).trim(),
+      article: String(x.article || "\u2014").trim(),
+      pron: String(x.pron || "").trim(),
+      translation: String(x.translation).trim(),
+      rank: start + i + 1,
+      tags: "top1000"
+    }));
+  }
+  function buildAnkiFile(deck) {
+    const esc = (s) => '"' + String(s ?? "").replace(/"/g, '""') + '"';
+    const lines = ["#separator:Comma", "#html:true", "#notetype:Basic", "#deck:French::Fiches", "#tags column:3"];
+    for (const c of deck) {
+      const front = c.article && c.article !== "\u2014" ? c.article + " " + escHtml(c.fr) : escHtml(c.fr);
+      const parts = ["<b>" + escHtml(c.translation) + "</b>"];
+      if (c.pron) parts.push('<span style="color:#9a8f78">[' + escHtml(c.pron) + "]</span>");
+      if (c.example_fr) {
+        parts.push("<hr>", "<i>" + escHtml(c.example_fr) + "</i>");
+        if (c.example_tr) parts.push('<span style="color:#777">' + escHtml(c.example_tr) + "</span>");
+      }
+      const tags = (c.tags || "fiches").replace(/\s+/g, "_") + " fiches";
+      lines.push([esc(front), esc(parts.join("<br>")), esc(tags)].join(","));
+    }
+    return lines.join("\n");
+  }
+  function downloadFile(content, name) {
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+  const DEFAULT_STATE = { deck: [], progress: {}, top: [], transLang: "pl", level: "A1" };
+  async function loadState(userId) {
     try {
-      const fresh = await genTop({ transLang:data.transLang, start:top.length, recent:top.map(w=>w.fr) });
-      const seen = new Set(top.map(w=>keyOf(w.fr))); const merged = [...top];
-      for (const w of fresh) if (!seen.has(keyOf(w.fr))) { merged.push({ ...w, rank:merged.length+1 }); seen.add(keyOf(w.fr)); }
-      setTop(merged);
-    } catch (e) { setError(genError(e)); } finally { setLoading(false); }
+      const { data, error } = await sb.from("fiches_state").select("state").eq("user_id", userId).maybeSingle();
+      if (error) {
+        console.error(error);
+        return null;
+      }
+      return data ? data.state : null;
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
   }
-
-  return (
-    <main style={s.main}>
-      <section style={s.maker}>
-        <div style={s.eyebrow}>Les essentiels</div>
-        <h1 style={s.h1}>Top 1000 everyday words</h1>
-        <p style={s.lede}>The highest-frequency French words, in order. Hear each, mark what you know, and add keepers to your deck.</p>
-        <div style={s.optRow}>
-          <div style={s.seg}>{Object.keys(LANGS).map(k=><button key={k} className="segb" style={{ ...s.segBtn, ...(data.transLang===k?s.segOn:{}) }} onClick={()=>setPref({ transLang:k })}>{LANGS[k]}</button>)}</div>
-          <span style={s.progressText}>{top.length} / {TOP_TARGET} loaded</span>
-        </div>
-        {error && <div style={s.error}>{error}</div>}
-      </section>
-      {top.length===0 ? (
-        <div style={{ ...s.empty, marginTop:24 }}>
-          <div style={s.emptyMark}>1000</div>
-          <p style={s.emptyText}>Load your first batch of the most common words.</p>
-          <button className="gen" style={{ ...s.genBtn, marginTop:14 }} onClick={loadMore} disabled={loading}>{loading?<Spin />:<Icon n="plus" s={16} />}{loading?"Loading…":"Load first 30"}</button>
-        </div>
-      ) : (
-        <section style={{ marginTop:22 }}>
-          <div style={s.topGrid}>{top.map(w=>{
-            const head = w.article && w.article!=="\u2014" ? (w.article+" "+w.fr) : w.fr;
-            const st = statusOf(w.fr); const added = inDeck.has(keyOf(w.fr));
-            return (
-              <div key={w.id} className="card" style={{ ...s.topCard, ...(st==="known"?s.cardKnown:{}) }}>
-                <div style={s.rank}>{String(w.rank).padStart(3,"0")}</div>
-                <div style={s.topMid}>
-                  <div style={s.headRowFr}><div style={s.topWord}>{head}</div><SpeakBtn text={head} size={26} /></div>
-                  {w.pron && <div style={s.pronSm}>[{w.pron}]</div>}
-                  <div style={s.topTrans}>{w.translation}</div>
-                </div>
-                <div style={s.topTools}>
-                  <StudiedDot status={st} onClick={()=>setProgress(w.fr,nextStatus(st))} />
-                  <button className="iconb" style={{ ...s.iconBtn, ...(added?s.addOn:{}) }} aria-label={added?"In deck":"Add to deck"}
-                    onClick={()=>!added && addToDeck([{ id:uid(), fr:w.fr, article:w.article, pron:w.pron, translation:w.translation, example_fr:"", example_tr:"", tags:"top1000" }])}>
-                    <Icon n={added?"check":"plus"} s={14} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}</div>
-          {top.length<TOP_TARGET && <div style={{ textAlign:"center", marginTop:20 }}>
-            <button className="gen" style={s.genBtn} onClick={loadMore} disabled={loading}>{loading?<Spin />:<Icon n="plus" s={16} />}{loading?"Loading…":"Load next "+BATCH_TOP}</button>
-          </div>}
-        </section>
-      )}
-    </main>
-  );
-}
-
-// ---------- Practice ----------
-function PracticeTab({ deck, statusOf, setProgress, goBuild }) {
-  const s = styles;
-  const [order, setOrder] = useState([]);
-  const [i, setI] = useState(0);
-  const [flip, setFlip] = useState(false);
-  useEffect(() => { reshuffle(); }, [deck.length]);
-  function reshuffle() {
-    const o = [...Array(deck.length).keys()];
-    for (let k=o.length-1;k>0;k--){ const j=Math.floor(Math.random()*(k+1)); [o[k],o[j]]=[o[j],o[k]]; }
-    setOrder(o); setI(0); setFlip(false);
+  function saveState(userId, state) {
+    return sb.from("fiches_state").upsert({ user_id: userId, state, updated_at: (/* @__PURE__ */ new Date()).toISOString() });
   }
-  if (!deck.length) return (
-    <main style={s.main}><div style={s.empty}><div style={s.emptyMark}>vide</div>
-      <p style={s.emptyText}>No cards yet. Generate words or add some from Top 1000.</p>
-      <button className="gen" style={{ ...s.genBtn, marginTop:14 }} onClick={goBuild}><Icon n="sparkles" s={16} /> Go to Generate</button></div></main>
-  );
-  const c = deck[order[i] ?? 0] || deck[0];
-  const head = c.article && c.article!=="\u2014" ? (c.article+" "+c.fr) : c.fr;
-  const st = statusOf(c.fr);
-  const advance = () => { setFlip(false); setI(p=>(p+1)%deck.length); };
-  const grade = (status) => { setProgress(c.fr, status); advance(); };
-  return (
-    <main style={s.main}>
-      <div style={s.studyBar}>
-        <span style={s.studyCount}>{i+1} / {deck.length}</span>
-        <div style={{ display:"flex", gap:8 }}>
-          <span style={{ ...s.pill, ...(st==="known"?s.pillKnown:st==="learning"?s.pillLearn:s.pillNew) }}>{st}</span>
-          <button className="ghost" style={s.ghostBtn} onClick={reshuffle}><Icon n="shuffle" s={14} /> Shuffle</button>
-        </div>
-      </div>
-      <button className="flipcard" style={s.flip} onClick={()=>setFlip(f=>!f)}>
-        {!flip ? (
-          <div style={s.flipFace}>
-            <div style={s.flipEye}>recto</div><div style={s.flipHead}>{head}</div>
-            {c.pron && <div style={s.flipPron}>[{c.pron}]</div>}
-            <div onClick={e=>e.stopPropagation()}><SpeakBtn text={head} size={40} /></div>
-            <div style={s.flipHint}>tap card to reveal</div>
-          </div>
-        ) : (
-          <div style={s.flipFace}>
-            <div style={s.flipEye}>verso</div><div style={s.flipTrans}>{c.translation}</div>
-            {c.example_fr && <div style={s.flipEx}><div style={s.exRowC}><div style={s.exFr}>{c.example_fr}</div><div onClick={e=>e.stopPropagation()}><SpeakBtn text={c.example_fr} size={24} /></div></div>{c.example_tr && <div style={s.exTr}>{c.example_tr}</div>}</div>}
-          </div>
-        )}
-      </button>
-      {!flip ? (
-        <div style={s.nav}>
-          <button className="navb" style={s.navBtn} onClick={()=>{ setFlip(false); setI(p=>(p-1+deck.length)%deck.length); }}><Icon n="chevL" s={18} /> Prev</button>
-          <button className="navb" style={s.navBtn} onClick={advance}>Next <Icon n="chevR" s={18} /></button>
-        </div>
-      ) : (
-        <div style={s.nav}>
-          <button className="navb" style={{ ...s.navBtn, ...s.againBtn }} onClick={()=>grade("learning")}><Icon n="rotate" s={16} /> Again</button>
-          <button className="navb" style={{ ...s.navBtn, ...s.knowBtn }} onClick={()=>grade("known")}><Icon n="check" s={18} /> Know it</button>
-        </div>
-      )}
-    </main>
-  );
-}
-
-function ImportModal({ onClose }) {
-  const s = styles;
-  const steps = ["Open Anki (AnkiDroid, desktop, or ankiweb.net).","File → Import (desktop) or ⋮ → Import (AnkiDroid).","Pick the downloaded fiches_french.txt.","Leave the type as Basic — the deck French::Fiches is set for you.","Hit Import. Cards land ready to review."];
-  return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={e=>e.stopPropagation()}>
-        <div style={s.modalHead}><div style={s.modalEye}><Icon n="info" s={14} /> File downloaded</div><button className="iconb" style={s.iconBtn} onClick={onClose}><Icon n="x" s={16} /></button></div>
-        <h3 style={s.modalH}>Get it into Anki</h3>
-        <ol style={s.steps}>{steps.map((t,i)=><li key={i} style={s.step}><span style={s.stepNum}>{i+1}</span>{t}</li>)}</ol>
-        <button className="export" style={{ ...s.exportBtn, width:"100%", justifyContent:"center" }} onClick={onClose}>Got it</button>
-      </div>
-    </div>
-  );
-}
-
-// ---------- styles ----------
-const styles = {
-  boot:{ minHeight:"100%", display:"grid", placeItems:"center", background:T.paper, color:T.bleu },
-  root:{ minHeight:"100%", background:T.paper, color:T.ink, fontFamily:"'Inter', system-ui, sans-serif", WebkitFontSmoothing:"antialiased" },
-  authWrap:{ maxWidth:480, margin:"0 auto", padding:"56px 22px", display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center" },
-  logoBig:{ width:64, height:64, borderRadius:16, background:T.bleu, color:"#fff", display:"grid", placeItems:"center", fontFamily:"'Fraunces', Georgia, serif", fontSize:38, fontWeight:600, boxShadow:"0 3px 0 rgba(0,0,0,0.14)", marginBottom:16 },
-  authCard:{ width:"100%", background:T.paper2, border:`1px solid ${T.line}`, borderRadius:16, padding:20, textAlign:"left" },
-  fieldLabel:{ fontSize:12.5, fontWeight:600, color:T.inkSoft, display:"block", margin:"10px 0 6px" },
-  inputIcon:{ display:"flex", alignItems:"center", gap:8, padding:"0 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"#fff" },
-  inputBare:{ flex:1, border:"none", outline:"none", padding:"12px 0", fontSize:15, background:"transparent", color:T.ink },
-  switchRow:{ fontSize:13.5, color:T.inkSoft, marginTop:14, textAlign:"center" },
-  linkBtn:{ background:"none", border:"none", color:T.bleu, fontWeight:700, cursor:"pointer", fontSize:13.5, marginLeft:6 },
-  okmsg:{ background:"#EAF1E2", color:T.vertDark, padding:"10px 12px", borderRadius:10, fontSize:13, marginTop:10 },
-  authNote:{ fontSize:12.5, color:T.inkSoft, marginTop:16, maxWidth:420, lineHeight:1.5 },
-
-  header:{ display:"flex", flexWrap:"wrap", gap:16, alignItems:"center", justifyContent:"space-between", padding:"16px 22px", borderBottom:`1px solid ${T.line}` },
-  brandRow:{ display:"flex", alignItems:"center", gap:12 },
-  logo:{ width:40, height:40, borderRadius:10, background:T.bleu, color:"#fff", display:"grid", placeItems:"center", fontFamily:"'Fraunces', Georgia, serif", fontSize:24, fontWeight:600, boxShadow:"0 2px 0 rgba(0,0,0,0.12)" },
-  brand:{ fontFamily:"'Fraunces', Georgia, serif", fontSize:26, fontWeight:600, lineHeight:1 },
-  tagline:{ fontSize:12.5, color:T.inkSoft, marginTop:3 },
-  headRight:{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" },
-  syncChip:{ display:"inline-flex", alignItems:"center", gap:5, fontSize:12, fontWeight:600, color:T.inkSoft, background:T.paper2, border:`1px solid ${T.line}`, borderRadius:20, padding:"5px 10px" },
-  statPills:{ display:"flex", gap:6 },
-  pill:{ fontSize:11.5, fontWeight:700, borderRadius:20, padding:"3px 10px" },
-  pillKnown:{ background:"#EAF1E2", color:T.vertDark }, pillLearn:{ background:"#FBF1DF", color:T.ochre }, pillNew:{ background:T.paper2, color:T.inkSoft, border:`1px solid ${T.line}` },
-  userChip:{ display:"inline-flex", alignItems:"center", gap:8, padding:"6px 10px 6px 6px", background:"#fff", border:`1px solid ${T.line}`, borderRadius:30, cursor:"pointer", color:T.ink },
-  avatarSm:{ width:24, height:24, borderRadius:"50%", background:T.ink, color:"#fff", display:"grid", placeItems:"center", fontSize:11, fontWeight:700 },
-
-  tabsRow:{ maxWidth:900, margin:"0 auto", padding:"16px 22px 0", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap" },
-  tabs:{ display:"flex", gap:6, background:T.paper2, padding:4, borderRadius:12, border:`1px solid ${T.line}` },
-  tab:{ display:"flex", alignItems:"center", gap:6, padding:"8px 14px", border:"none", background:"transparent", color:T.inkSoft, fontSize:14, fontWeight:500, borderRadius:9, cursor:"pointer" },
-  tabOn:{ background:"#fff", color:T.ink, boxShadow:"0 1px 3px rgba(0,0,0,0.08)" },
-  count:{ fontSize:11, fontWeight:700, background:T.bleu, color:"#fff", borderRadius:20, padding:"1px 7px", marginLeft:2 },
-
-  main:{ maxWidth:900, margin:"0 auto", padding:"20px 22px 10px" },
-  maker:{ background:T.paper2, border:`1px solid ${T.line}`, borderRadius:18, padding:"24px 26px 20px" },
-  eyebrow:{ fontFamily:"'Fraunces', Georgia, serif", fontStyle:"italic", color:T.ochre, fontSize:15 },
-  h1:{ fontFamily:"'Fraunces', Georgia, serif", fontSize:31, fontWeight:600, margin:"4px 0 8px", lineHeight:1.1 },
-  lede:{ color:T.inkSoft, fontSize:14.5, lineHeight:1.55, margin:"0 0 18px", maxWidth:600 },
-  controls:{ display:"flex", flexDirection:"column", gap:14 },
-  inputWrap:{ display:"flex", gap:10, flexWrap:"wrap" },
-  input:{ flex:1, minWidth:200, padding:"13px 15px", border:`1px solid ${T.line}`, borderRadius:12, fontSize:15, background:"#fff", color:T.ink, outline:"none" },
-  genBtn:{ display:"inline-flex", alignItems:"center", gap:8, padding:"13px 18px", background:T.bleu, color:"#fff", border:"none", borderRadius:12, fontSize:14.5, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap", boxShadow:"0 2px 0 "+T.bleuDark },
-  genBtnOff:{ opacity:0.6, cursor:"default", boxShadow:"none" },
-  optRow:{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" },
-  seg:{ display:"inline-flex", alignItems:"center", gap:4, background:"#fff", border:`1px solid ${T.line}`, borderRadius:10, padding:"4px 6px" },
-  segBtn:{ border:"none", background:"transparent", color:T.inkSoft, fontSize:13, fontWeight:600, padding:"6px 11px", borderRadius:7, cursor:"pointer" },
-  segOn:{ background:T.ink, color:"#fff" },
-  progressText:{ fontSize:13, fontWeight:600, color:T.inkSoft },
-  chips:{ display:"flex", flexWrap:"wrap", gap:8 },
-  chip:{ background:"#fff", border:`1px solid ${T.line}`, color:T.ink, fontSize:13, padding:"7px 12px", borderRadius:20, cursor:"pointer", fontWeight:500 },
-  error:{ background:"#FBEAE7", border:`1px solid ${T.brick}33`, color:T.brick, padding:"10px 14px", borderRadius:10, fontSize:13.5, marginTop:4 },
-
-  deckSec:{ marginTop:28 },
-  deckHead:{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginBottom:14, flexWrap:"wrap" },
-  h2:{ fontFamily:"'Fraunces', Georgia, serif", fontSize:22, fontWeight:600, margin:0, display:"flex", alignItems:"center", gap:8 },
-  deckCount:{ fontSize:13, fontWeight:700, color:T.inkSoft, background:T.paper2, border:`1px solid ${T.line}`, borderRadius:20, padding:"1px 9px" },
-  ghostBtn:{ display:"inline-flex", alignItems:"center", gap:6, background:"transparent", border:`1px solid ${T.line}`, color:T.inkSoft, fontSize:13, fontWeight:600, padding:"8px 12px", borderRadius:10, cursor:"pointer" },
-  exportBtn:{ display:"inline-flex", alignItems:"center", gap:7, background:T.vert, color:"#fff", border:"none", fontSize:13.5, fontWeight:600, padding:"9px 15px", borderRadius:10, cursor:"pointer", boxShadow:"0 2px 0 "+T.vertDark },
-  exportOff:{ opacity:0.45, cursor:"default", boxShadow:"none" },
-
-  empty:{ textAlign:"center", padding:"44px 20px", border:`1.5px dashed ${T.line}`, borderRadius:16, background:T.paper2 },
-  emptyMark:{ fontFamily:"'Fraunces', Georgia, serif", fontStyle:"italic", fontSize:34, color:T.line },
-  emptyText:{ color:T.inkSoft, fontSize:14, marginTop:6 },
-
-  cardGrid:{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(250px, 1fr))", gap:14 },
-  card:{ background:"#fff", border:`1px solid ${T.line}`, borderRadius:14, padding:"15px 16px", position:"relative", boxShadow:"0 1px 2px rgba(0,0,0,0.03)" },
-  cardKnown:{ borderColor:T.vert+"66", background:"#FCFDFA" },
-  cardTop:{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8 },
-  headRowFr:{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" },
-  headword:{ fontFamily:"'Fraunces', Georgia, serif", fontSize:20, fontWeight:600, lineHeight:1.15 },
-  cardTools:{ display:"flex", gap:4, opacity:0, transition:"opacity .15s" },
-  iconBtn:{ width:28, height:28, display:"grid", placeItems:"center", border:`1px solid ${T.line}`, background:"#fff", borderRadius:8, color:T.inkSoft, cursor:"pointer", flexShrink:0 },
-  addOn:{ background:"#EAF1E2", borderColor:T.vert, color:T.vert },
-  pron:{ color:T.ochre, fontSize:13, marginTop:2, fontStyle:"italic" },
-  trans:{ fontSize:15, fontWeight:600, marginTop:8, color:T.ink },
-  example:{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.line}` },
-  exRow:{ display:"flex", alignItems:"center", gap:8, justifyContent:"space-between" },
-  exFr:{ fontFamily:"'Fraunces', Georgia, serif", fontStyle:"italic", fontSize:14.5, color:T.ink },
-  exTr:{ fontSize:13, color:T.inkSoft, marginTop:3 },
-  tag:{ marginTop:11, fontSize:11.5, fontWeight:600, color:T.bleu },
-
-  cardEdit:{ display:"flex", flexDirection:"column", gap:8 },
-  editRow:{ display:"flex", gap:8 },
-  editInp:{ padding:"9px 11px", border:`1px solid ${T.line}`, borderRadius:9, fontSize:14, background:"#fff", color:T.ink, outline:"none", fontFamily:"'Inter', system-ui, sans-serif" },
-  editActions:{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:2 },
-
-  topGrid:{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:12 },
-  topCard:{ display:"flex", alignItems:"flex-start", gap:12, padding:"13px 14px" },
-  rank:{ fontFamily:"'Fraunces', Georgia, serif", fontSize:14, fontWeight:600, color:T.line, fontVariantNumeric:"tabular-nums", paddingTop:2, width:30, flexShrink:0 },
-  topMid:{ flex:1, minWidth:0 },
-  topWord:{ fontFamily:"'Fraunces', Georgia, serif", fontSize:18, fontWeight:600, lineHeight:1.15 },
-  pronSm:{ color:T.ochre, fontSize:12, fontStyle:"italic", marginTop:1 },
-  topTrans:{ fontSize:14, color:T.ink, marginTop:4, fontWeight:500 },
-  topTools:{ display:"flex", flexDirection:"column", gap:5, flexShrink:0 },
-
-  studyBar:{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, gap:10, flexWrap:"wrap" },
-  studyCount:{ fontSize:13, fontWeight:700, color:T.inkSoft, letterSpacing:0.5 },
-  flip:{ width:"100%", minHeight:300, border:`1px solid ${T.line}`, background:"#fff", borderRadius:20, cursor:"pointer", padding:30, textAlign:"center", boxShadow:"0 6px 22px rgba(35,43,58,0.07)", display:"block" },
-  flipFace:{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:240, gap:8 },
-  flipEye:{ fontFamily:"'Fraunces', Georgia, serif", fontStyle:"italic", color:T.ochre, fontSize:14 },
-  flipHead:{ fontFamily:"'Fraunces', Georgia, serif", fontSize:40, fontWeight:600, lineHeight:1.1 },
-  flipPron:{ color:T.ochre, fontSize:16, fontStyle:"italic" },
-  flipHint:{ color:T.inkSoft, fontSize:12, marginTop:8, textTransform:"uppercase", letterSpacing:1 },
-  flipTrans:{ fontSize:28, fontWeight:700 },
-  flipEx:{ marginTop:8 },
-  exRowC:{ display:"flex", alignItems:"center", gap:8, justifyContent:"center" },
-  nav:{ display:"flex", gap:12, marginTop:16 },
-  navBtn:{ flex:1, display:"inline-flex", alignItems:"center", justifyContent:"center", gap:6, padding:"14px", background:"#fff", border:`1px solid ${T.line}`, borderRadius:12, fontSize:14.5, fontWeight:600, color:T.ink, cursor:"pointer" },
-  againBtn:{ borderColor:T.ochre+"88", color:T.ochre },
-  knowBtn:{ background:T.vert, borderColor:T.vert, color:"#fff", boxShadow:"0 2px 0 "+T.vertDark },
-
-  overlay:{ position:"fixed", inset:0, background:"rgba(35,43,58,0.4)", display:"grid", placeItems:"center", padding:18, zIndex:50, backdropFilter:"blur(2px)" },
-  modal:{ background:T.paper2, border:`1px solid ${T.line}`, borderRadius:18, padding:24, maxWidth:430, width:"100%", boxShadow:"0 20px 60px rgba(0,0,0,0.25)" },
-  modalHead:{ display:"flex", alignItems:"center", justifyContent:"space-between" },
-  modalEye:{ display:"inline-flex", alignItems:"center", gap:6, color:T.vert, fontSize:13, fontWeight:700 },
-  modalH:{ fontFamily:"'Fraunces', Georgia, serif", fontSize:24, fontWeight:600, margin:"8px 0 14px" },
-  steps:{ listStyle:"none", padding:0, margin:"0 0 18px", display:"flex", flexDirection:"column", gap:11 },
-  step:{ display:"flex", gap:11, fontSize:14, color:T.ink, lineHeight:1.45, alignItems:"flex-start" },
-  stepNum:{ flexShrink:0, width:22, height:22, borderRadius:7, background:T.bleu, color:"#fff", display:"grid", placeItems:"center", fontSize:12, fontWeight:700 },
-
-  footer:{ textAlign:"center", padding:"22px", color:T.inkSoft, fontSize:12.5, borderTop:`1px solid ${T.line}`, marginTop:26 },
-};
-
-const CSS = `
+  function App() {
+    if (typeof window === "undefined" || !window.supabase) {
+      return /* @__PURE__ */ React.createElement("div", { style: { padding: 40, textAlign: "center", fontFamily: "sans-serif", color: "#232B3A", minHeight: "100%", background: "#F3EFE6" } }, /* @__PURE__ */ React.createElement("h2", { style: { fontFamily: "Georgia, serif", fontSize: 28 } }, "\u26A0\uFE0F Connection Blocked"), /* @__PURE__ */ React.createElement("p", { style: { color: "#5A6172", maxWidth: 450, margin: "10px auto", lineHeight: 1.5 } }, "It looks like an adblocker or strict privacy shield is blocking the Supabase database scripts from loading."), /* @__PURE__ */ React.createElement("p", { style: { fontWeight: "bold", marginTop: 15 } }, "Please disable your adblocker for this site and refresh!"));
+    }
+    const [session, setSession] = useState(null);
+    const [data, setData] = useState(null);
+    const [booting, setBooting] = useState(true);
+    const [saveStatus, setSaveStatus] = useState("saved");
+    const saveTimer = useRef(null);
+    useEffect(() => {
+      if (!CONFIGURED) {
+        setBooting(false);
+        return;
+      }
+      sb.auth.getSession().then(({ data: { session: session2 } }) => {
+        setSession(session2);
+        if (!session2) setBooting(false);
+      });
+      const { data: sub } = sb.auth.onAuthStateChange((_e, sess) => {
+        setSession(sess);
+        if (!sess) {
+          setData(null);
+          setBooting(false);
+        }
+      });
+      return () => sub.subscription.unsubscribe();
+    }, []);
+    useEffect(() => {
+      if (!session) return;
+      (async () => {
+        setBooting(true);
+        let st = await loadState(session.user.id);
+        if (!st) {
+          st = { ...DEFAULT_STATE };
+          await saveState(session.user.id, st);
+        }
+        setData({ ...DEFAULT_STATE, ...st });
+        setBooting(false);
+      })();
+    }, [session && session.user.id]);
+    useEffect(() => {
+      G.tl = data?.transLang || "pl";
+    }, [data && data.transLang]);
+    function commit(next) {
+      setData(next);
+      setSaveStatus("saving");
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      const id = session.user.id;
+      saveTimer.current = setTimeout(async () => {
+        const { error } = await saveState(id, next);
+        setSaveStatus(error ? "error" : "saved");
+      }, 500);
+    }
+    if (!CONFIGURED) return /* @__PURE__ */ React.createElement(SetupNotice, null);
+    if (booting) return /* @__PURE__ */ React.createElement("div", { style: styles.boot }, /* @__PURE__ */ React.createElement(Spin, { s: 24 }));
+    if (!session) return /* @__PURE__ */ React.createElement(Auth, null);
+    if (!data) return /* @__PURE__ */ React.createElement("div", { style: styles.boot }, /* @__PURE__ */ React.createElement(Spin, { s: 24 }));
+    return /* @__PURE__ */ React.createElement(Workspace, { session, data, commit, saveStatus, onLogout: () => sb.auth.signOut() });
+  }
+  function SetupNotice() {
+    const s = styles;
+    return /* @__PURE__ */ React.createElement("div", { style: s.root }, /* @__PURE__ */ React.createElement("div", { style: s.authWrap }, /* @__PURE__ */ React.createElement("div", { style: s.logoBig }, "F"), /* @__PURE__ */ React.createElement("h1", { style: { ...s.h1, fontSize: 30 } }, "One step left"), /* @__PURE__ */ React.createElement("p", { style: { ...s.lede, textAlign: "center" } }, "Open ", /* @__PURE__ */ React.createElement("b", null, "index.html"), " and paste your Supabase ", /* @__PURE__ */ React.createElement("b", null, "Project URL"), " and ", /* @__PURE__ */ React.createElement("b", null, "anon key"), " into the CONFIG block near the top, then reload. The DEPLOY guide walks you through it.")));
+  }
+  function Auth() {
+    const s = styles;
+    const [mode, setMode] = useState("signin");
+    const [email, setEmail] = useState("");
+    const [pw, setPw] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [msg, setMsg] = useState(null);
+    const [err, setErr] = useState(null);
+    async function submit() {
+      if (!email.trim() || pw.length < 6) {
+        setErr("Enter an email and a password of at least 6 characters.");
+        return;
+      }
+      setBusy(true);
+      setErr(null);
+      setMsg(null);
+      try {
+        if (mode === "signin") {
+          const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pw });
+          if (error) throw error;
+        } else {
+          const { data, error } = await sb.auth.signUp({ email: email.trim(), password: pw });
+          if (error) throw error;
+          if (!data.session) setMsg("Account created. If email confirmation is on, check your inbox, then sign in.");
+        }
+      } catch (e) {
+        setErr(e.message || "Something went wrong.");
+      } finally {
+        setBusy(false);
+      }
+    }
+    return /* @__PURE__ */ React.createElement("div", { style: s.root }, /* @__PURE__ */ React.createElement("div", { style: s.authWrap }, /* @__PURE__ */ React.createElement("div", { style: s.logoBig }, "F"), /* @__PURE__ */ React.createElement("div", { style: s.eyebrow }, "Bienvenue"), /* @__PURE__ */ React.createElement("h1", { style: { ...s.h1, fontSize: 32, marginTop: 2 } }, mode === "signin" ? "Welcome back" : "Create your account"), /* @__PURE__ */ React.createElement("p", { style: { ...s.lede, textAlign: "center", margin: "0 auto 20px" } }, "One login, same flashcards on every device."), /* @__PURE__ */ React.createElement("div", { style: s.authCard }, /* @__PURE__ */ React.createElement("label", { style: s.fieldLabel }, "Email"), /* @__PURE__ */ React.createElement("div", { style: s.inputIcon }, /* @__PURE__ */ React.createElement(Icon, { n: "mail", s: 15, cls: "muted" }), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "inp",
+        style: s.inputBare,
+        type: "email",
+        placeholder: "you@email.com",
+        value: email,
+        onChange: (e) => setEmail(e.target.value),
+        onKeyDown: (e) => {
+          if (e.key === "Enter") submit();
+        }
+      }
+    )), /* @__PURE__ */ React.createElement("label", { style: s.fieldLabel }, "Password"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "inp",
+        style: s.input,
+        type: "password",
+        placeholder: "at least 6 characters",
+        value: pw,
+        onChange: (e) => setPw(e.target.value),
+        onKeyDown: (e) => {
+          if (e.key === "Enter") submit();
+        }
+      }
+    ), err && /* @__PURE__ */ React.createElement("div", { style: s.error }, err), msg && /* @__PURE__ */ React.createElement("div", { style: s.okmsg }, msg), /* @__PURE__ */ React.createElement("button", { className: "gen", style: { ...s.genBtn, width: "100%", justifyContent: "center", marginTop: 14 }, onClick: submit, disabled: busy }, busy ? /* @__PURE__ */ React.createElement(Spin, null) : /* @__PURE__ */ React.createElement(Icon, { n: "user", s: 16 }), mode === "signin" ? "Sign in" : "Create account"), /* @__PURE__ */ React.createElement("div", { style: s.switchRow }, mode === "signin" ? "New here?" : "Already have an account?", /* @__PURE__ */ React.createElement("button", { style: s.linkBtn, onClick: () => {
+      setMode(mode === "signin" ? "signup" : "signin");
+      setErr(null);
+      setMsg(null);
+    } }, mode === "signin" ? "Create one" : "Sign in"))), /* @__PURE__ */ React.createElement("p", { style: s.authNote }, "Your account and cards live in your own Supabase project. Sign in with the same email on your phone and PC to share one deck.")));
+  }
+  function Workspace({ session, data, commit, saveStatus, onLogout }) {
+    const s = styles;
+    const [view, setView] = useState("generate");
+    const [showImport, setShowImport] = useState(false);
+    const email = session.user.email || "you";
+    const setProgress = (fr, status) => {
+      const k = keyOf(fr);
+      const prog = { ...data.progress || {} };
+      const cur = prog[k] || { status: "new", seen: 0 };
+      prog[k] = { status, seen: (cur.seen || 0) + (status === "new" ? 0 : 1) };
+      commit({ ...data, progress: prog });
+    };
+    const statusOf = (fr) => data.progress?.[keyOf(fr)]?.status || "new";
+    const stats = (() => {
+      let known = 0, learning = 0;
+      for (const v of Object.values(data.progress || {})) {
+        if (v.status === "known") known++;
+        else if (v.status === "learning") learning++;
+      }
+      return { known, learning };
+    })();
+    function addToDeck(cards) {
+      const seen = new Set(data.deck.map((c) => keyOf(c.fr)));
+      const merged = [...data.deck];
+      for (const c of cards) if (!seen.has(keyOf(c.fr))) {
+        merged.push(c);
+        seen.add(keyOf(c.fr));
+      }
+      commit({ ...data, deck: merged });
+    }
+    const removeCard = (id) => commit({ ...data, deck: data.deck.filter((c) => c.id !== id) });
+    const editCard = (card) => commit({ ...data, deck: data.deck.map((c) => c.id === card.id ? card : c) });
+    const clearDeck = () => commit({ ...data, deck: [] });
+    const setTop = (top) => commit({ ...data, top });
+    const setPref = (p) => commit({ ...data, ...p });
+    function exportAnki() {
+      if (!data.deck.length) return;
+      downloadFile(buildAnkiFile(data.deck), "fiches_french.txt");
+      setShowImport(true);
+    }
+    return /* @__PURE__ */ React.createElement("div", { style: s.root }, /* @__PURE__ */ React.createElement("header", { style: s.header }, /* @__PURE__ */ React.createElement("div", { style: s.brandRow }, /* @__PURE__ */ React.createElement("div", { style: s.logo }, "F"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: s.brand }, "Fiches"), /* @__PURE__ */ React.createElement("div", { style: s.tagline }, "French flashcards \xB7 synced everywhere \xB7 free Anki export"))), /* @__PURE__ */ React.createElement("div", { style: s.headRight }, /* @__PURE__ */ React.createElement("span", { style: s.syncChip }, /* @__PURE__ */ React.createElement(Icon, { n: "cloud", s: 13 }), saveStatus === "saving" ? "saving\u2026" : saveStatus === "error" ? "sync error" : "synced"), /* @__PURE__ */ React.createElement("div", { style: s.statPills }, /* @__PURE__ */ React.createElement("span", { style: { ...s.pill, ...s.pillKnown } }, stats.known, " known"), /* @__PURE__ */ React.createElement("span", { style: { ...s.pill, ...s.pillLearn } }, stats.learning, " learning")), /* @__PURE__ */ React.createElement("button", { className: "ghost", style: s.userChip, onClick: onLogout, title: email }, /* @__PURE__ */ React.createElement("span", { style: s.avatarSm }, email[0]?.toUpperCase()), /* @__PURE__ */ React.createElement(Icon, { n: "logout", s: 13 })))), /* @__PURE__ */ React.createElement("nav", { style: s.tabsRow }, /* @__PURE__ */ React.createElement("div", { style: s.tabs }, /* @__PURE__ */ React.createElement(Tab, { on: view === "generate", onClick: () => setView("generate"), icon: "sparkles", label: "Generate" }), /* @__PURE__ */ React.createElement(Tab, { on: view === "top", onClick: () => setView("top"), icon: "list", label: "Top 1000" }), /* @__PURE__ */ React.createElement(Tab, { on: view === "practice", onClick: () => setView("practice"), icon: "cap", label: "Practice", badge: data.deck.length })), /* @__PURE__ */ React.createElement("button", { className: "export", style: { ...s.exportBtn, ...data.deck.length ? {} : s.exportOff }, onClick: exportAnki, disabled: !data.deck.length }, /* @__PURE__ */ React.createElement(Icon, { n: "download", s: 15 }), " Export to Anki")), view === "generate" && /* @__PURE__ */ React.createElement(
+      GenerateTab,
+      {
+        data,
+        setPref,
+        addToDeck,
+        deck: data.deck,
+        removeCard,
+        editCard,
+        clearDeck,
+        statusOf,
+        setProgress
+      }
+    ), view === "top" && /* @__PURE__ */ React.createElement(TopTab, { data, setTop, setPref, addToDeck, deck: data.deck, statusOf, setProgress }), view === "practice" && /* @__PURE__ */ React.createElement(PracticeTab, { deck: data.deck, statusOf, setProgress, goBuild: () => setView("generate") }), showImport && /* @__PURE__ */ React.createElement(ImportModal, { onClose: () => setShowImport(false) }), /* @__PURE__ */ React.createElement("footer", { style: s.footer }, "Import into free Anki: ", /* @__PURE__ */ React.createElement("b", null, "AnkiDroid"), " (Android) \xB7 ", /* @__PURE__ */ React.createElement("b", null, "ankiweb.net"), " (any browser) \xB7 ", /* @__PURE__ */ React.createElement("b", null, "desktop Anki"), "."));
+  }
+  function Tab({ on, onClick, icon, label, badge }) {
+    const s = styles;
+    return /* @__PURE__ */ React.createElement("button", { className: "tab", style: { ...s.tab, ...on ? s.tabOn : {} }, onClick }, /* @__PURE__ */ React.createElement(Icon, { n: icon, s: 15 }), " ", label, badge != null && badge > 0 && /* @__PURE__ */ React.createElement("span", { style: s.count }, badge));
+  }
+  function SpeakBtn({ text, size = 28 }) {
+    const s = styles;
+    return /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: "iconb spk",
+        style: { ...s.iconBtn, width: size, height: size },
+        title: "Open in Google Translate",
+        "aria-label": "Hear " + text + " in Google Translate",
+        onClick: (e) => {
+          e.stopPropagation();
+          openTranslate(text);
+        }
+      },
+      /* @__PURE__ */ React.createElement(Icon, { n: "volume", s: 15 })
+    );
+  }
+  function StudiedDot({ status, onClick }) {
+    const s = styles;
+    const map = { new: { bg: "#fff", bd: T.line, c: T.inkSoft }, learning: { bg: "#FBF1DF", bd: T.ochre, c: T.ochre }, known: { bg: "#EAF1E2", bd: T.vert, c: T.vert } };
+    const m = map[status] || map.new;
+    return /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: "iconb",
+        style: { ...s.iconBtn, background: m.bg, borderColor: m.bd, color: m.c },
+        "aria-label": "Mark studied",
+        onClick: (e) => {
+          e.stopPropagation();
+          onClick();
+        }
+      },
+      /* @__PURE__ */ React.createElement(Icon, { n: "check", s: 14 })
+    );
+  }
+  function GenerateTab({ data, setPref, addToDeck, deck, removeCard, editCard, clearDeck, statusOf, setProgress }) {
+    const s = styles;
+    const [topic, setTopic] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [editing, setEditing] = useState(null);
+    const nextStatus = (st) => st === "known" ? "new" : st === "learning" ? "known" : "learning";
+    async function run(forced) {
+      const t = (forced ?? topic).trim();
+      setLoading(true);
+      setError(null);
+      try {
+        addToDeck(await genSituational({ topic: t, transLang: data.transLang, level: data.level, existing: deck.map((c) => c.fr) }));
+      } catch (e) {
+        setError(genError(e));
+      } finally {
+        setLoading(false);
+      }
+    }
+    return /* @__PURE__ */ React.createElement("main", { style: s.main }, /* @__PURE__ */ React.createElement("section", { style: s.maker }, /* @__PURE__ */ React.createElement("div", { style: s.eyebrow }, "G\\u00e9n\\u00e9rateur"), /* @__PURE__ */ React.createElement("h1", { style: s.h1 }, "What do you want to say today?"), /* @__PURE__ */ React.createElement("p", { style: s.lede }, "Pick a theme or type your own. Each card gets the article, a pronunciation you can hear, and a real example."), /* @__PURE__ */ React.createElement("div", { style: s.controls }, /* @__PURE__ */ React.createElement("div", { style: s.inputWrap }, /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "inp",
+        style: s.input,
+        placeholder: "e.g. ordering at a restaurant, the airport, small talk\u2026",
+        value: topic,
+        onChange: (e) => setTopic(e.target.value),
+        onKeyDown: (e) => {
+          if (e.key === "Enter" && !loading) run();
+        }
+      }
+    ), /* @__PURE__ */ React.createElement("button", { className: "gen", style: { ...s.genBtn, ...loading ? s.genBtnOff : {} }, onClick: () => run(), disabled: loading }, loading ? /* @__PURE__ */ React.createElement(Spin, null) : /* @__PURE__ */ React.createElement(Icon, { n: "sparkles", s: 16 }), loading ? "Generating\u2026" : "Generate 8 cards")), /* @__PURE__ */ React.createElement("div", { style: s.optRow }, /* @__PURE__ */ React.createElement("div", { style: s.seg }, Object.keys(LANGS).map((k) => /* @__PURE__ */ React.createElement("button", { key: k, className: "segb", style: { ...s.segBtn, ...data.transLang === k ? s.segOn : {} }, onClick: () => setPref({ transLang: k }) }, LANGS[k]))), /* @__PURE__ */ React.createElement("div", { style: s.seg }, ["A1", "A2"].map((k) => /* @__PURE__ */ React.createElement("button", { key: k, className: "segb", style: { ...s.segBtn, ...data.level === k ? s.segOn : {} }, onClick: () => setPref({ level: k }) }, k)))), /* @__PURE__ */ React.createElement("div", { style: s.chips }, TOPICS.map((t) => /* @__PURE__ */ React.createElement("button", { key: t, className: "chip", style: s.chip, disabled: loading, onClick: () => {
+      setTopic(t);
+      run(t);
+    } }, t))), error && /* @__PURE__ */ React.createElement("div", { style: s.error }, error))), /* @__PURE__ */ React.createElement("section", { style: s.deckSec }, /* @__PURE__ */ React.createElement("div", { style: s.deckHead }, /* @__PURE__ */ React.createElement("h2", { style: s.h2 }, "Your deck ", /* @__PURE__ */ React.createElement("span", { style: s.deckCount }, deck.length)), deck.length > 0 && /* @__PURE__ */ React.createElement("button", { className: "ghost", style: s.ghostBtn, onClick: clearDeck }, /* @__PURE__ */ React.createElement(Icon, { n: "trash", s: 14 }), " Clear")), deck.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: s.empty }, /* @__PURE__ */ React.createElement("div", { style: s.emptyMark }, "fiche"), /* @__PURE__ */ React.createElement("p", { style: s.emptyText }, "No cards yet. Generate a batch and they'll stack up here.")) : /* @__PURE__ */ React.createElement("div", { style: s.cardGrid }, deck.map((c) => editing === c.id ? /* @__PURE__ */ React.createElement(EditCard, { key: c.id, card: c, onSave: (d) => {
+      editCard(d);
+      setEditing(null);
+    }, onCancel: () => setEditing(null) }) : /* @__PURE__ */ React.createElement(FullCard, { key: c.id, card: c, status: statusOf(c.fr), onStudy: () => setProgress(c.fr, nextStatus(statusOf(c.fr))), onEdit: () => setEditing(c.id), onDelete: () => removeCard(c.id) })))));
+  }
+  function genError(e) {
+    const m = String(e && e.message || e);
+    if (m === "auth") return "Session expired \u2014 sign in again.";
+    if (m === "gen") return "The AI function isn't reachable. Check the generate function is deployed and ANTHROPIC_API_KEY is set.";
+    return "Couldn't generate just now. Try again.";
+  }
+  function FullCard({ card, status, onStudy, onEdit, onDelete }) {
+    const s = styles;
+    const head = card.article && card.article !== "\u2014" ? card.article + " " + card.fr : card.fr;
+    return /* @__PURE__ */ React.createElement("div", { className: "card", style: { ...s.card, ...status === "known" ? s.cardKnown : {} } }, /* @__PURE__ */ React.createElement("div", { style: s.cardTop }, /* @__PURE__ */ React.createElement("div", { style: s.headRowFr }, /* @__PURE__ */ React.createElement("div", { style: s.headword }, head), /* @__PURE__ */ React.createElement(SpeakBtn, { text: head })), /* @__PURE__ */ React.createElement("div", { className: "cardTools", style: s.cardTools }, /* @__PURE__ */ React.createElement(StudiedDot, { status, onClick: onStudy }), /* @__PURE__ */ React.createElement("button", { className: "iconb", style: s.iconBtn, onClick: onEdit, "aria-label": "Edit" }, /* @__PURE__ */ React.createElement(Icon, { n: "pencil", s: 14 })), /* @__PURE__ */ React.createElement("button", { className: "iconb del", style: s.iconBtn, onClick: onDelete, "aria-label": "Delete" }, /* @__PURE__ */ React.createElement(Icon, { n: "trash", s: 14 })))), card.pron && /* @__PURE__ */ React.createElement("div", { style: s.pron }, "[", card.pron, "]"), /* @__PURE__ */ React.createElement("div", { style: s.trans }, card.translation), card.example_fr && /* @__PURE__ */ React.createElement("div", { style: s.example }, /* @__PURE__ */ React.createElement("div", { style: s.exRow }, /* @__PURE__ */ React.createElement("div", { style: s.exFr }, card.example_fr), /* @__PURE__ */ React.createElement(SpeakBtn, { text: card.example_fr, size: 24 })), card.example_tr && /* @__PURE__ */ React.createElement("div", { style: s.exTr }, card.example_tr)), card.tags && /* @__PURE__ */ React.createElement("div", { style: s.tag }, "#", card.tags));
+  }
+  function EditCard({ card, onSave, onCancel }) {
+    const s = styles;
+    const [d, setD] = useState({ ...card });
+    const set = (k) => (e) => setD({ ...d, [k]: e.target.value });
+    return /* @__PURE__ */ React.createElement("div", { style: { ...s.card, ...s.cardEdit } }, /* @__PURE__ */ React.createElement("div", { style: s.editRow }, /* @__PURE__ */ React.createElement("input", { style: { ...s.editInp, width: 64 }, value: d.article, onChange: set("article"), placeholder: "le" }), /* @__PURE__ */ React.createElement("input", { style: { ...s.editInp, flex: 1 }, value: d.fr, onChange: set("fr"), placeholder: "French" })), /* @__PURE__ */ React.createElement("input", { style: s.editInp, value: d.pron, onChange: set("pron"), placeholder: "pronunciation" }), /* @__PURE__ */ React.createElement("input", { style: s.editInp, value: d.translation, onChange: set("translation"), placeholder: "meaning" }), /* @__PURE__ */ React.createElement("input", { style: s.editInp, value: d.example_fr || "", onChange: set("example_fr"), placeholder: "example (FR)" }), /* @__PURE__ */ React.createElement("input", { style: s.editInp, value: d.example_tr || "", onChange: set("example_tr"), placeholder: "example (translation)" }), /* @__PURE__ */ React.createElement("div", { style: s.editActions }, /* @__PURE__ */ React.createElement("button", { className: "ghost", style: s.ghostBtn, onClick: onCancel }, /* @__PURE__ */ React.createElement(Icon, { n: "x", s: 14 }), " Cancel"), /* @__PURE__ */ React.createElement("button", { className: "export", style: s.exportBtn, onClick: () => onSave(d) }, /* @__PURE__ */ React.createElement(Icon, { n: "check", s: 14 }), " Save")));
+  }
+  function TopTab({ data, setTop, setPref, addToDeck, deck, statusOf, setProgress }) {
+    const s = styles;
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const top = data.top || [];
+    const inDeck = new Set(deck.map((c) => keyOf(c.fr)));
+    const nextStatus = (st) => st === "known" ? "new" : st === "learning" ? "known" : "learning";
+    async function loadMore() {
+      setLoading(true);
+      setError(null);
+      try {
+        const fresh = await genTop({ transLang: data.transLang, start: top.length, recent: top.map((w) => w.fr) });
+        const seen = new Set(top.map((w) => keyOf(w.fr)));
+        const merged = [...top];
+        for (const w of fresh) if (!seen.has(keyOf(w.fr))) {
+          merged.push({ ...w, rank: merged.length + 1 });
+          seen.add(keyOf(w.fr));
+        }
+        setTop(merged);
+      } catch (e) {
+        setError(genError(e));
+      } finally {
+        setLoading(false);
+      }
+    }
+    return /* @__PURE__ */ React.createElement("main", { style: s.main }, /* @__PURE__ */ React.createElement("section", { style: s.maker }, /* @__PURE__ */ React.createElement("div", { style: s.eyebrow }, "Les essentiels"), /* @__PURE__ */ React.createElement("h1", { style: s.h1 }, "Top 1000 everyday words"), /* @__PURE__ */ React.createElement("p", { style: s.lede }, "The highest-frequency French words, in order. Hear each, mark what you know, and add keepers to your deck."), /* @__PURE__ */ React.createElement("div", { style: s.optRow }, /* @__PURE__ */ React.createElement("div", { style: s.seg }, Object.keys(LANGS).map((k) => /* @__PURE__ */ React.createElement("button", { key: k, className: "segb", style: { ...s.segBtn, ...data.transLang === k ? s.segOn : {} }, onClick: () => setPref({ transLang: k }) }, LANGS[k]))), /* @__PURE__ */ React.createElement("span", { style: s.progressText }, top.length, " / ", TOP_TARGET, " loaded")), error && /* @__PURE__ */ React.createElement("div", { style: s.error }, error)), top.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { ...s.empty, marginTop: 24 } }, /* @__PURE__ */ React.createElement("div", { style: s.emptyMark }, "1000"), /* @__PURE__ */ React.createElement("p", { style: s.emptyText }, "Load your first batch of the most common words."), /* @__PURE__ */ React.createElement("button", { className: "gen", style: { ...s.genBtn, marginTop: 14 }, onClick: loadMore, disabled: loading }, loading ? /* @__PURE__ */ React.createElement(Spin, null) : /* @__PURE__ */ React.createElement(Icon, { n: "plus", s: 16 }), loading ? "Loading\u2026" : "Load first 30")) : /* @__PURE__ */ React.createElement("section", { style: { marginTop: 22 } }, /* @__PURE__ */ React.createElement("div", { style: s.topGrid }, top.map((w) => {
+      const head = w.article && w.article !== "\u2014" ? w.article + " " + w.fr : w.fr;
+      const st = statusOf(w.fr);
+      const added = inDeck.has(keyOf(w.fr));
+      return /* @__PURE__ */ React.createElement("div", { key: w.id, className: "card", style: { ...s.topCard, ...st === "known" ? s.cardKnown : {} } }, /* @__PURE__ */ React.createElement("div", { style: s.rank }, String(w.rank).padStart(3, "0")), /* @__PURE__ */ React.createElement("div", { style: s.topMid }, /* @__PURE__ */ React.createElement("div", { style: s.headRowFr }, /* @__PURE__ */ React.createElement("div", { style: s.topWord }, head), /* @__PURE__ */ React.createElement(SpeakBtn, { text: head, size: 26 })), w.pron && /* @__PURE__ */ React.createElement("div", { style: s.pronSm }, "[", w.pron, "]"), /* @__PURE__ */ React.createElement("div", { style: s.topTrans }, w.translation)), /* @__PURE__ */ React.createElement("div", { style: s.topTools }, /* @__PURE__ */ React.createElement(StudiedDot, { status: st, onClick: () => setProgress(w.fr, nextStatus(st)) }), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "iconb",
+          style: { ...s.iconBtn, ...added ? s.addOn : {} },
+          "aria-label": added ? "In deck" : "Add to deck",
+          onClick: () => !added && addToDeck([{ id: uid(), fr: w.fr, article: w.article, pron: w.pron, translation: w.translation, example_fr: "", example_tr: "", tags: "top1000" }])
+        },
+        /* @__PURE__ */ React.createElement(Icon, { n: added ? "check" : "plus", s: 14 })
+      )));
+    })), top.length < TOP_TARGET && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginTop: 20 } }, /* @__PURE__ */ React.createElement("button", { className: "gen", style: s.genBtn, onClick: loadMore, disabled: loading }, loading ? /* @__PURE__ */ React.createElement(Spin, null) : /* @__PURE__ */ React.createElement(Icon, { n: "plus", s: 16 }), loading ? "Loading\u2026" : "Load next " + BATCH_TOP))));
+  }
+  function PracticeTab({ deck, statusOf, setProgress, goBuild }) {
+    const s = styles;
+    const [order, setOrder] = useState([]);
+    const [i, setI] = useState(0);
+    const [flip, setFlip] = useState(false);
+    useEffect(() => {
+      reshuffle();
+    }, [deck.length]);
+    function reshuffle() {
+      const o = [...Array(deck.length).keys()];
+      for (let k = o.length - 1; k > 0; k--) {
+        const j = Math.floor(Math.random() * (k + 1));
+        [o[k], o[j]] = [o[j], o[k]];
+      }
+      setOrder(o);
+      setI(0);
+      setFlip(false);
+    }
+    if (!deck.length) return /* @__PURE__ */ React.createElement("main", { style: s.main }, /* @__PURE__ */ React.createElement("div", { style: s.empty }, /* @__PURE__ */ React.createElement("div", { style: s.emptyMark }, "vide"), /* @__PURE__ */ React.createElement("p", { style: s.emptyText }, "No cards yet. Generate words or add some from Top 1000."), /* @__PURE__ */ React.createElement("button", { className: "gen", style: { ...s.genBtn, marginTop: 14 }, onClick: goBuild }, /* @__PURE__ */ React.createElement(Icon, { n: "sparkles", s: 16 }), " Go to Generate")));
+    const c = deck[order[i] ?? 0] || deck[0];
+    const head = c.article && c.article !== "\u2014" ? c.article + " " + c.fr : c.fr;
+    const st = statusOf(c.fr);
+    const advance = () => {
+      setFlip(false);
+      setI((p) => (p + 1) % deck.length);
+    };
+    const grade = (status) => {
+      setProgress(c.fr, status);
+      advance();
+    };
+    return /* @__PURE__ */ React.createElement("main", { style: s.main }, /* @__PURE__ */ React.createElement("div", { style: s.studyBar }, /* @__PURE__ */ React.createElement("span", { style: s.studyCount }, i + 1, " / ", deck.length), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { ...s.pill, ...st === "known" ? s.pillKnown : st === "learning" ? s.pillLearn : s.pillNew } }, st), /* @__PURE__ */ React.createElement("button", { className: "ghost", style: s.ghostBtn, onClick: reshuffle }, /* @__PURE__ */ React.createElement(Icon, { n: "shuffle", s: 14 }), " Shuffle"))), /* @__PURE__ */ React.createElement("button", { className: "flipcard", style: s.flip, onClick: () => setFlip((f) => !f) }, !flip ? /* @__PURE__ */ React.createElement("div", { style: s.flipFace }, /* @__PURE__ */ React.createElement("div", { style: s.flipEye }, "recto"), /* @__PURE__ */ React.createElement("div", { style: s.flipHead }, head), c.pron && /* @__PURE__ */ React.createElement("div", { style: s.flipPron }, "[", c.pron, "]"), /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation() }, /* @__PURE__ */ React.createElement(SpeakBtn, { text: head, size: 40 })), /* @__PURE__ */ React.createElement("div", { style: s.flipHint }, "tap card to reveal")) : /* @__PURE__ */ React.createElement("div", { style: s.flipFace }, /* @__PURE__ */ React.createElement("div", { style: s.flipEye }, "verso"), /* @__PURE__ */ React.createElement("div", { style: s.flipTrans }, c.translation), c.example_fr && /* @__PURE__ */ React.createElement("div", { style: s.flipEx }, /* @__PURE__ */ React.createElement("div", { style: s.exRowC }, /* @__PURE__ */ React.createElement("div", { style: s.exFr }, c.example_fr), /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation() }, /* @__PURE__ */ React.createElement(SpeakBtn, { text: c.example_fr, size: 24 }))), c.example_tr && /* @__PURE__ */ React.createElement("div", { style: s.exTr }, c.example_tr)))), !flip ? /* @__PURE__ */ React.createElement("div", { style: s.nav }, /* @__PURE__ */ React.createElement("button", { className: "navb", style: s.navBtn, onClick: () => {
+      setFlip(false);
+      setI((p) => (p - 1 + deck.length) % deck.length);
+    } }, /* @__PURE__ */ React.createElement(Icon, { n: "chevL", s: 18 }), " Prev"), /* @__PURE__ */ React.createElement("button", { className: "navb", style: s.navBtn, onClick: advance }, "Next ", /* @__PURE__ */ React.createElement(Icon, { n: "chevR", s: 18 }))) : /* @__PURE__ */ React.createElement("div", { style: s.nav }, /* @__PURE__ */ React.createElement("button", { className: "navb", style: { ...s.navBtn, ...s.againBtn }, onClick: () => grade("learning") }, /* @__PURE__ */ React.createElement(Icon, { n: "rotate", s: 16 }), " Again"), /* @__PURE__ */ React.createElement("button", { className: "navb", style: { ...s.navBtn, ...s.knowBtn }, onClick: () => grade("known") }, /* @__PURE__ */ React.createElement(Icon, { n: "check", s: 18 }), " Know it")));
+  }
+  function ImportModal({ onClose }) {
+    const s = styles;
+    const steps = ["Open Anki (AnkiDroid, desktop, or ankiweb.net).", "File \u2192 Import (desktop) or \u22EE \u2192 Import (AnkiDroid).", "Pick the downloaded fiches_french.txt.", "Leave the type as Basic \u2014 the deck French::Fiches is set for you.", "Hit Import. Cards land ready to review."];
+    return /* @__PURE__ */ React.createElement("div", { style: s.overlay, onClick: onClose }, /* @__PURE__ */ React.createElement("div", { style: s.modal, onClick: (e) => e.stopPropagation() }, /* @__PURE__ */ React.createElement("div", { style: s.modalHead }, /* @__PURE__ */ React.createElement("div", { style: s.modalEye }, /* @__PURE__ */ React.createElement(Icon, { n: "info", s: 14 }), " File downloaded"), /* @__PURE__ */ React.createElement("button", { className: "iconb", style: s.iconBtn, onClick: onClose }, /* @__PURE__ */ React.createElement(Icon, { n: "x", s: 16 }))), /* @__PURE__ */ React.createElement("h3", { style: s.modalH }, "Get it into Anki"), /* @__PURE__ */ React.createElement("ol", { style: s.steps }, steps.map((t, i) => /* @__PURE__ */ React.createElement("li", { key: i, style: s.step }, /* @__PURE__ */ React.createElement("span", { style: s.stepNum }, i + 1), t))), /* @__PURE__ */ React.createElement("button", { className: "export", style: { ...s.exportBtn, width: "100%", justifyContent: "center" }, onClick: onClose }, "Got it")));
+  }
+  const styles = {
+    boot: { minHeight: "100%", display: "grid", placeItems: "center", background: T.paper, color: T.bleu },
+    root: { minHeight: "100%", background: T.paper, color: T.ink, fontFamily: "'Inter', system-ui, sans-serif", WebkitFontSmoothing: "antialiased" },
+    authWrap: { maxWidth: 480, margin: "0 auto", padding: "56px 22px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" },
+    logoBig: { width: 64, height: 64, borderRadius: 16, background: T.bleu, color: "#fff", display: "grid", placeItems: "center", fontFamily: "'Fraunces', Georgia, serif", fontSize: 38, fontWeight: 600, boxShadow: "0 3px 0 rgba(0,0,0,0.14)", marginBottom: 16 },
+    authCard: { width: "100%", background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 16, padding: 20, textAlign: "left" },
+    fieldLabel: { fontSize: 12.5, fontWeight: 600, color: T.inkSoft, display: "block", margin: "10px 0 6px" },
+    inputIcon: { display: "flex", alignItems: "center", gap: 8, padding: "0 12px", border: `1px solid ${T.line}`, borderRadius: 12, background: "#fff" },
+    inputBare: { flex: 1, border: "none", outline: "none", padding: "12px 0", fontSize: 15, background: "transparent", color: T.ink },
+    switchRow: { fontSize: 13.5, color: T.inkSoft, marginTop: 14, textAlign: "center" },
+    linkBtn: { background: "none", border: "none", color: T.bleu, fontWeight: 700, cursor: "pointer", fontSize: 13.5, marginLeft: 6 },
+    okmsg: { background: "#EAF1E2", color: T.vertDark, padding: "10px 12px", borderRadius: 10, fontSize: 13, marginTop: 10 },
+    authNote: { fontSize: 12.5, color: T.inkSoft, marginTop: 16, maxWidth: 420, lineHeight: 1.5 },
+    header: { display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between", padding: "16px 22px", borderBottom: `1px solid ${T.line}` },
+    brandRow: { display: "flex", alignItems: "center", gap: 12 },
+    logo: { width: 40, height: 40, borderRadius: 10, background: T.bleu, color: "#fff", display: "grid", placeItems: "center", fontFamily: "'Fraunces', Georgia, serif", fontSize: 24, fontWeight: 600, boxShadow: "0 2px 0 rgba(0,0,0,0.12)" },
+    brand: { fontFamily: "'Fraunces', Georgia, serif", fontSize: 26, fontWeight: 600, lineHeight: 1 },
+    tagline: { fontSize: 12.5, color: T.inkSoft, marginTop: 3 },
+    headRight: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
+    syncChip: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: T.inkSoft, background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 20, padding: "5px 10px" },
+    statPills: { display: "flex", gap: 6 },
+    pill: { fontSize: 11.5, fontWeight: 700, borderRadius: 20, padding: "3px 10px" },
+    pillKnown: { background: "#EAF1E2", color: T.vertDark },
+    pillLearn: { background: "#FBF1DF", color: T.ochre },
+    pillNew: { background: T.paper2, color: T.inkSoft, border: `1px solid ${T.line}` },
+    userChip: { display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 10px 6px 6px", background: "#fff", border: `1px solid ${T.line}`, borderRadius: 30, cursor: "pointer", color: T.ink },
+    avatarSm: { width: 24, height: 24, borderRadius: "50%", background: T.ink, color: "#fff", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700 },
+    tabsRow: { maxWidth: 900, margin: "0 auto", padding: "16px 22px 0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" },
+    tabs: { display: "flex", gap: 6, background: T.paper2, padding: 4, borderRadius: 12, border: `1px solid ${T.line}` },
+    tab: { display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", border: "none", background: "transparent", color: T.inkSoft, fontSize: 14, fontWeight: 500, borderRadius: 9, cursor: "pointer" },
+    tabOn: { background: "#fff", color: T.ink, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" },
+    count: { fontSize: 11, fontWeight: 700, background: T.bleu, color: "#fff", borderRadius: 20, padding: "1px 7px", marginLeft: 2 },
+    main: { maxWidth: 900, margin: "0 auto", padding: "20px 22px 10px" },
+    maker: { background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 18, padding: "24px 26px 20px" },
+    eyebrow: { fontFamily: "'Fraunces', Georgia, serif", fontStyle: "italic", color: T.ochre, fontSize: 15 },
+    h1: { fontFamily: "'Fraunces', Georgia, serif", fontSize: 31, fontWeight: 600, margin: "4px 0 8px", lineHeight: 1.1 },
+    lede: { color: T.inkSoft, fontSize: 14.5, lineHeight: 1.55, margin: "0 0 18px", maxWidth: 600 },
+    controls: { display: "flex", flexDirection: "column", gap: 14 },
+    inputWrap: { display: "flex", gap: 10, flexWrap: "wrap" },
+    input: { flex: 1, minWidth: 200, padding: "13px 15px", border: `1px solid ${T.line}`, borderRadius: 12, fontSize: 15, background: "#fff", color: T.ink, outline: "none" },
+    genBtn: { display: "inline-flex", alignItems: "center", gap: 8, padding: "13px 18px", background: T.bleu, color: "#fff", border: "none", borderRadius: 12, fontSize: 14.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 2px 0 " + T.bleuDark },
+    genBtnOff: { opacity: 0.6, cursor: "default", boxShadow: "none" },
+    optRow: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
+    seg: { display: "inline-flex", alignItems: "center", gap: 4, background: "#fff", border: `1px solid ${T.line}`, borderRadius: 10, padding: "4px 6px" },
+    segBtn: { border: "none", background: "transparent", color: T.inkSoft, fontSize: 13, fontWeight: 600, padding: "6px 11px", borderRadius: 7, cursor: "pointer" },
+    segOn: { background: T.ink, color: "#fff" },
+    progressText: { fontSize: 13, fontWeight: 600, color: T.inkSoft },
+    chips: { display: "flex", flexWrap: "wrap", gap: 8 },
+    chip: { background: "#fff", border: `1px solid ${T.line}`, color: T.ink, fontSize: 13, padding: "7px 12px", borderRadius: 20, cursor: "pointer", fontWeight: 500 },
+    error: { background: "#FBEAE7", border: `1px solid ${T.brick}33`, color: T.brick, padding: "10px 14px", borderRadius: 10, fontSize: 13.5, marginTop: 4 },
+    deckSec: { marginTop: 28 },
+    deckHead: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14, flexWrap: "wrap" },
+    h2: { fontFamily: "'Fraunces', Georgia, serif", fontSize: 22, fontWeight: 600, margin: 0, display: "flex", alignItems: "center", gap: 8 },
+    deckCount: { fontSize: 13, fontWeight: 700, color: T.inkSoft, background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 20, padding: "1px 9px" },
+    ghostBtn: { display: "inline-flex", alignItems: "center", gap: 6, background: "transparent", border: `1px solid ${T.line}`, color: T.inkSoft, fontSize: 13, fontWeight: 600, padding: "8px 12px", borderRadius: 10, cursor: "pointer" },
+    exportBtn: { display: "inline-flex", alignItems: "center", gap: 7, background: T.vert, color: "#fff", border: "none", fontSize: 13.5, fontWeight: 600, padding: "9px 15px", borderRadius: 10, cursor: "pointer", boxShadow: "0 2px 0 " + T.vertDark },
+    exportOff: { opacity: 0.45, cursor: "default", boxShadow: "none" },
+    empty: { textAlign: "center", padding: "44px 20px", border: `1.5px dashed ${T.line}`, borderRadius: 16, background: T.paper2 },
+    emptyMark: { fontFamily: "'Fraunces', Georgia, serif", fontStyle: "italic", fontSize: 34, color: T.line },
+    emptyText: { color: T.inkSoft, fontSize: 14, marginTop: 6 },
+    cardGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 14 },
+    card: { background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "15px 16px", position: "relative", boxShadow: "0 1px 2px rgba(0,0,0,0.03)" },
+    cardKnown: { borderColor: T.vert + "66", background: "#FCFDFA" },
+    cardTop: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
+    headRowFr: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+    headword: { fontFamily: "'Fraunces', Georgia, serif", fontSize: 20, fontWeight: 600, lineHeight: 1.15 },
+    cardTools: { display: "flex", gap: 4, opacity: 0, transition: "opacity .15s" },
+    iconBtn: { width: 28, height: 28, display: "grid", placeItems: "center", border: `1px solid ${T.line}`, background: "#fff", borderRadius: 8, color: T.inkSoft, cursor: "pointer", flexShrink: 0 },
+    addOn: { background: "#EAF1E2", borderColor: T.vert, color: T.vert },
+    pron: { color: T.ochre, fontSize: 13, marginTop: 2, fontStyle: "italic" },
+    trans: { fontSize: 15, fontWeight: 600, marginTop: 8, color: T.ink },
+    example: { marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.line}` },
+    exRow: { display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" },
+    exFr: { fontFamily: "'Fraunces', Georgia, serif", fontStyle: "italic", fontSize: 14.5, color: T.ink },
+    exTr: { fontSize: 13, color: T.inkSoft, marginTop: 3 },
+    tag: { marginTop: 11, fontSize: 11.5, fontWeight: 600, color: T.bleu },
+    cardEdit: { display: "flex", flexDirection: "column", gap: 8 },
+    editRow: { display: "flex", gap: 8 },
+    editInp: { padding: "9px 11px", border: `1px solid ${T.line}`, borderRadius: 9, fontSize: 14, background: "#fff", color: T.ink, outline: "none", fontFamily: "'Inter', system-ui, sans-serif" },
+    editActions: { display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 2 },
+    topGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 },
+    topCard: { display: "flex", alignItems: "flex-start", gap: 12, padding: "13px 14px" },
+    rank: { fontFamily: "'Fraunces', Georgia, serif", fontSize: 14, fontWeight: 600, color: T.line, fontVariantNumeric: "tabular-nums", paddingTop: 2, width: 30, flexShrink: 0 },
+    topMid: { flex: 1, minWidth: 0 },
+    topWord: { fontFamily: "'Fraunces', Georgia, serif", fontSize: 18, fontWeight: 600, lineHeight: 1.15 },
+    pronSm: { color: T.ochre, fontSize: 12, fontStyle: "italic", marginTop: 1 },
+    topTrans: { fontSize: 14, color: T.ink, marginTop: 4, fontWeight: 500 },
+    topTools: { display: "flex", flexDirection: "column", gap: 5, flexShrink: 0 },
+    studyBar: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 10, flexWrap: "wrap" },
+    studyCount: { fontSize: 13, fontWeight: 700, color: T.inkSoft, letterSpacing: 0.5 },
+    flip: { width: "100%", minHeight: 300, border: `1px solid ${T.line}`, background: "#fff", borderRadius: 20, cursor: "pointer", padding: 30, textAlign: "center", boxShadow: "0 6px 22px rgba(35,43,58,0.07)", display: "block" },
+    flipFace: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 240, gap: 8 },
+    flipEye: { fontFamily: "'Fraunces', Georgia, serif", fontStyle: "italic", color: T.ochre, fontSize: 14 },
+    flipHead: { fontFamily: "'Fraunces', Georgia, serif", fontSize: 40, fontWeight: 600, lineHeight: 1.1 },
+    flipPron: { color: T.ochre, fontSize: 16, fontStyle: "italic" },
+    flipHint: { color: T.inkSoft, fontSize: 12, marginTop: 8, textTransform: "uppercase", letterSpacing: 1 },
+    flipTrans: { fontSize: 28, fontWeight: 700 },
+    flipEx: { marginTop: 8 },
+    exRowC: { display: "flex", alignItems: "center", gap: 8, justifyContent: "center" },
+    nav: { display: "flex", gap: 12, marginTop: 16 },
+    navBtn: { flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "14px", background: "#fff", border: `1px solid ${T.line}`, borderRadius: 12, fontSize: 14.5, fontWeight: 600, color: T.ink, cursor: "pointer" },
+    againBtn: { borderColor: T.ochre + "88", color: T.ochre },
+    knowBtn: { background: T.vert, borderColor: T.vert, color: "#fff", boxShadow: "0 2px 0 " + T.vertDark },
+    overlay: { position: "fixed", inset: 0, background: "rgba(35,43,58,0.4)", display: "grid", placeItems: "center", padding: 18, zIndex: 50, backdropFilter: "blur(2px)" },
+    modal: { background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 18, padding: 24, maxWidth: 430, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,0.25)" },
+    modalHead: { display: "flex", alignItems: "center", justifyContent: "space-between" },
+    modalEye: { display: "inline-flex", alignItems: "center", gap: 6, color: T.vert, fontSize: 13, fontWeight: 700 },
+    modalH: { fontFamily: "'Fraunces', Georgia, serif", fontSize: 24, fontWeight: 600, margin: "8px 0 14px" },
+    steps: { listStyle: "none", padding: 0, margin: "0 0 18px", display: "flex", flexDirection: "column", gap: 11 },
+    step: { display: "flex", gap: 11, fontSize: 14, color: T.ink, lineHeight: 1.45, alignItems: "flex-start" },
+    stepNum: { flexShrink: 0, width: 22, height: 22, borderRadius: 7, background: T.bleu, color: "#fff", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700 },
+    footer: { textAlign: "center", padding: "22px", color: T.inkSoft, fontSize: 12.5, borderTop: `1px solid ${T.line}`, marginTop: 26 }
+  };
+  const CSS = `
 * { box-sizing: border-box; }
 .spin svg { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -790,9 +697,23 @@ button:focus-visible { outline: 2px solid ${T.bleu}; outline-offset: 2px; }
 @media (max-width: 560px) { .cardTools { opacity: 1 !important; } }
 @media (prefers-reduced-motion: reduce) { .spin svg { animation:none; } * { transition:none !important; } }
 `;
-const styleTag = document.createElement("style"); styleTag.textContent = CSS; document.head.appendChild(styleTag);
+  const styleTag = document.createElement("style");
+  styleTag.textContent = CSS;
+  document.head.appendChild(styleTag);
+  ReactDOM.createRoot(document.getElementById("root")).render(/* @__PURE__ */ React.createElement(App, null));
+})();
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  }
+  if (ready()) { go(); return; }
+  var n = 0, iv = setInterval(function () {
+    if (ready()) { clearInterval(iv); go(); }
+    else if (++n > 150) {
+      clearInterval(iv);
+      var r = document.getElementById('root');
+      if (r) r.innerHTML = '<div style="font-family:system-ui;max-width:520px;margin:60px auto;padding:0 22px;color:#232B3A;line-height:1.6"><h2>Could not load React</h2><p>The React library was blocked or failed to load from the CDN. If you use an ad/script blocker, allow <b>cdnjs.cloudflare.com</b> and <b>jsdelivr.net</b>, then refresh.</p></div>';
+    }
+  }, 50);
+})();
 </script>
 </body>
 </html>
