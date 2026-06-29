@@ -29,7 +29,7 @@
   const CONFIGURED = !SUPABASE_URL.includes("YOUR-PROJECT") && !SUPABASE_ANON_KEY.includes("YOUR-ANON");
   const supabaseExists = typeof window !== "undefined" && window.supabase;
   const sb = CONFIGURED && supabaseExists ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
-  const GEN_URL = SUPABASE_URL + "/functions/v1/generate";
+  const GEN_URL = SUPABASE_URL + "/functions/v1/quick-handler";
   if (!supabaseExists) {
     console.error("Supabase script was blocked or failed to load. Check your adblocker!");
   }
