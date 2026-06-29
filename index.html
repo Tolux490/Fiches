@@ -30,8 +30,16 @@ const SUPABASE_ANON_KEY = "sb_publishable_tKdo6hYOMBvN21RjhGVDWg_0u4RJauZ";
 /* ============================================================ */
 
 const CONFIGURED = !SUPABASE_URL.includes("YOUR-PROJECT") && !SUPABASE_ANON_KEY.includes("YOUR-ANON");
-const sb = CONFIGURED ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+// 1. Check if window.supabase actually loaded before trying to use it
+const supabaseExists = typeof window !== "undefined" && window.supabase;
+const sb = (CONFIGURED && supabaseExists) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const GEN_URL = SUPABASE_URL + "/functions/v1/generate";
+
+// 2. If it's missing, let the user know instead of crashing completely
+if (!supabaseExists) {
+  console.error("Supabase script was blocked or failed to load. Check your adblocker!");
+}
 
 // ---------- theme ----------
 const T = { paper:"#F3EFE6", paper2:"#FBF9F4", ink:"#232B3A", inkSoft:"#5A6172", line:"#E3DDCF",
@@ -69,6 +77,20 @@ const PATHS = {
   mail:'<path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><polyline points="22 6 12 13 2 6"/>',
   cloud:'<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
 };
+
+function App() {
+  if (!typeof window !== "undefined" || !window.supabase) {
+    return (
+      <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif", color: "#232B3A" }}>
+        <h2>⚠️ Connection Blocked</h2>
+        <p>It looks like an adblocker or browser shield is blocking the database connection.</p>
+        <p>Please disable your adblocker for this site and refresh the page!</p>
+      </div>
+    );
+  }
+
+  // ... rest of your existing App code stays exactly the same
+  
 function Icon({ n, s=16, cls }) {
   return <svg className={cls} width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}
